@@ -15,6 +15,18 @@ if (!/^[a-zA-Z0-9_-]{1,40}$/.test(profile)) throw new Error('Invalid RELAY_PROFI
 const store = jsonStore(join(profileDir, `${profile}.json`));
 const [command, ...args] = process.argv.slice(2);
 
+function openclawTelegramToken() {
+  if (process.env.RELAY_OPENCLAW_TELEGRAM_TOKEN) return process.env.RELAY_OPENCLAW_TELEGRAM_TOKEN;
+  const configPath = process.env.RELAY_OPENCLAW_MAIN_CONFIG ?? join(homedir(), '.openclaw', 'openclaw.json');
+  try {
+    const config = JSON.parse(readFileSync(configPath, 'utf8'));
+    const telegram = config.channels?.telegram;
+    return telegram?.botToken ?? telegram?.token
+      ?? telegram?.accounts?.default?.botToken ?? telegram?.accounts?.default?.token ?? null;
+  } catch { return null; }
+}
+const openclawToken = openclawTelegramToken();
+
 function profiles() {
   return existsSync(profileDir)
     ? readdirSync(profileDir).filter((name) => {
@@ -349,7 +361,7 @@ if (command === 'profiles') {
     try {
       if (harness === 'openclaw') {
         await sendOpenClawNotice({ bin: process.env.RELAY_OPENCLAW_BIN,
-          ownerId: process.env.RELAY_OPENCLAW_TELEGRAM_OWNER, text });
+          ownerId: process.env.RELAY_OPENCLAW_TELEGRAM_OWNER, text, token: openclawToken });
       } else if (harness === 'hermes-gateway' && process.env.RELAY_HERMES_TELEGRAM_SOCKET) {
         await sendInlineNotice(process.env.RELAY_HERMES_TELEGRAM_SOCKET, text);
       }
@@ -424,7 +436,7 @@ if (command === 'profiles') {
       notificationCodes.set(callId, { code, attempts: 0 });
       sendOpenClawRing({ bin: process.env.RELAY_OPENCLAW_BIN,
         ownerId: process.env.RELAY_OPENCLAW_TELEGRAM_OWNER,
-        call: event, alias: aliases.get(from) ?? from, code, trusted }).catch((error) => {
+        call: event, alias: aliases.get(from) ?? from, code, trusted, token: openclawToken }).catch((error) => {
         console.error(`Call ${callId} could not notify Telegram: ${error.message}`);
       });
     }
@@ -499,7 +511,7 @@ if (command === 'profiles') {
     try {
       if (harness === 'openclaw') {
         await sendOpenClawNotice({ bin: process.env.RELAY_OPENCLAW_BIN,
-          ownerId: process.env.RELAY_OPENCLAW_TELEGRAM_OWNER, text, silent: true });
+          ownerId: process.env.RELAY_OPENCLAW_TELEGRAM_OWNER, text, silent: true, token: openclawToken });
       } else if (harness === 'hermes-gateway' && process.env.RELAY_HERMES_TELEGRAM_SOCKET) {
         await sendInlineNotice(process.env.RELAY_HERMES_TELEGRAM_SOCKET, text, { silent: true });
       }

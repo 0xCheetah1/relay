@@ -49,8 +49,28 @@ export const sendDial = (path, request) => socketRequest(path, request, { timeou
 
 export const sendControl = (path, request) => socketRequest(path, request, { timeoutMs: 140_000 });
 
-export function sendOpenClawRing({ bin, ownerId, call, alias, code, trusted = true }) {
+export async function sendTelegramDirect({ token, chatId, text, inlineKeyboard, silent = false }) {
+  if (!token) throw new Error('Missing Telegram bot token');
+  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text, disable_notification: silent === true,
+      ...(inlineKeyboard ? { reply_markup: { inline_keyboard: inlineKeyboard } } : {}) }),
+    signal: AbortSignal.timeout(10000),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) throw new Error(`Telegram sendMessage failed: ${data.description ?? response.status}`);
+  return data.result;
+}
+
+export function sendOpenClawRing({ bin, ownerId, call, alias, code, trusted = true, token }) {
   const text = `📞 Incoming RELAY call\n\nFrom: ${alias}${trusted ? '' : '\n⚠️ Unknown caller — not in your phonebook'}\nIntent: ${call.intent}\n\n📋 Task\n${call.task}\n\n${trusted ? 'Answers use full context.' : 'Accepting answers with minimal context only.'}\n⏳ Answer within 2 minutes.`;
+  if (token) {
+    return sendTelegramDirect({ token, chatId: ownerId, text, inlineKeyboard: [[
+      { text: '✅ Accept', callback_data: `rc:a:${call.callId}:${code}` },
+      { text: '❌ Reject', callback_data: `rc:r:${call.callId}:${code}` },
+    ]] });
+  }
   const presentation = {
     blocks: [{
       type: 'buttons',
@@ -66,17 +86,20 @@ export function sendOpenClawRing({ bin, ownerId, call, alias, code, trusted = tr
     const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     let err = '';
+    const timer = setTimeout(() => child.kill('SIGKILL'), 15000);
     child.stdout.on('data', (chunk) => { out += chunk; });
     child.stderr.on('data', (chunk) => { err += chunk; });
-    child.on('error', reject);
+    child.on('error', (error) => { clearTimeout(timer); reject(error); });
     child.on('close', (code) => {
+      clearTimeout(timer);
       if (code === 0) resolve(out);
       else reject(new Error(`openclaw message send exited ${code}: ${err.slice(-300)}`));
     });
   });
 }
 
-export function sendOpenClawNotice({ bin, ownerId, text, silent = false }) {
+export function sendOpenClawNotice({ bin, ownerId, text, silent = false, token }) {
+  if (token) return sendTelegramDirect({ token, chatId: ownerId, text, silent });
   const args = ['message', 'send', '--channel', 'telegram', '--target', String(ownerId), '--message', text];
   if (silent) args.push('--silent');
   args.push('--json');
@@ -84,10 +107,12 @@ export function sendOpenClawNotice({ bin, ownerId, text, silent = false }) {
     const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     let err = '';
+    const timer = setTimeout(() => child.kill('SIGKILL'), 15000);
     child.stdout.on('data', (chunk) => { out += chunk; });
     child.stderr.on('data', (chunk) => { err += chunk; });
-    child.on('error', reject);
+    child.on('error', (error) => { clearTimeout(timer); reject(error); });
     child.on('close', (code) => {
+      clearTimeout(timer);
       if (code === 0) resolve(out);
       else reject(new Error(`openclaw message send exited ${code}: ${err.slice(-300)}`));
     });
