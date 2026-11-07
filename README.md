@@ -128,6 +128,7 @@ To run a different private instance locally, set `RELAY_HOST=127.0.0.1`, `RELAY_
 | `RELAY_OPENCLAW_STATE_DIR` | Separate OpenClaw state directory for call sessions. |
 | `RELAY_OPENCLAW_APPROVAL_SOCKET` | Explicit path to the bridge's approval socket (OpenClaw plugin). |
 | `RELAY_TELEGRAM_DEBUG=1` | Enable the OpenClaw plugin's debug log (off by default). |
+| `RELAY_HARNESS_TIMEOUT_MS` | Max time a bridge waits for the harness to answer (default `110000`). |
 
 ## Still to build
 

@@ -277,7 +277,7 @@ if (command === 'profiles') {
   });
   client.on('call.dialing', ({ callId }) => console.log(`Ringing ${callId}`));
   client.on('call.accepted', ({ callId }) => {
-    console.log(`Call connected ${callId}; /say ${callId} <message> (max 60s)`);
+    console.log(`Call connected ${callId}; /say ${callId} <message>`);
     const call = approved.get(callId);
     if (!call) return;
     approved.delete(callId);
@@ -286,6 +286,7 @@ if (command === 'profiles') {
     const controller = new AbortController();
     active.set(callId, controller);
     invokeHarness(harness, call, { signal: controller.signal,
+      timeoutMs: Number(process.env.RELAY_HARNESS_TIMEOUT_MS ?? '110000'),
       policy: trusted ? 'full' : 'limited',
       command: harness === 'openclaw' ? process.env.RELAY_OPENCLAW_BIN : process.env.RELAY_HERMES_BIN,
       config: process.env.RELAY_OPENCLAW_CONFIG, cwd: process.env.RELAY_OPENCLAW_CWD,
