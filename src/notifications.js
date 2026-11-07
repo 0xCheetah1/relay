@@ -10,14 +10,14 @@ export function sameCode(expected, actual) {
   return timingSafeEqual(Buffer.from(expected), Buffer.from(actual));
 }
 
-export async function sendTelegramRing({ url, secretFile, call, alias, code }) {
+export async function sendTelegramRing({ url, secretFile, call, alias, code, trusted = true }) {
   const target = new URL(url);
   if (target.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname)) {
     throw new Error('Hermes webhook must use loopback HTTP');
   }
   const secret = readFileSync(secretFile, 'utf8').trim();
   if (!secret) throw new Error('Missing Hermes webhook secret');
-  const body = JSON.stringify({ callId: call.callId, from: call.from, alias, intent: call.intent, task: call.task, code });
+  const body = JSON.stringify({ callId: call.callId, from: call.from, alias, intent: call.intent, task: call.task, code, trusted });
   const timestamp = String(Math.floor(Date.now() / 1000));
   const signature = createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex');
   const response = await fetch(target, {
@@ -47,8 +47,8 @@ export const sendDecision = (path, request) => socketRequest(path, request);
 
 export const sendDial = (path, request) => socketRequest(path, request, { timeoutMs: 270_000 });
 
-export function sendOpenClawRing({ bin, ownerId, call, alias, code }) {
-  const text = `Incoming RELAY call\n\nFrom: ${alias}\nIntent: ${call.intent}\n\nTask\n${call.task}\n\nAnswer within 2 minutes.`;
+export function sendOpenClawRing({ bin, ownerId, call, alias, code, trusted = true }) {
+  const text = `Incoming RELAY call\n\nFrom: ${alias}${trusted ? '' : '\nUnknown caller - not in your phonebook'}\nIntent: ${call.intent}\n\nTask\n${call.task}\n\n${trusted ? 'Answers use full context.' : 'Accepting answers with minimal context only.'}\nAnswer within 2 minutes.`;
   const presentation = {
     blocks: [{
       type: 'buttons',
@@ -74,9 +74,9 @@ export function sendOpenClawRing({ bin, ownerId, call, alias, code }) {
   });
 }
 
-export async function sendInlineRing(path, { call, alias, code }) {
+export async function sendInlineRing(path, { call, alias, code, trusted = true }) {
   const result = await socketRequest(path, { callId: call.callId, from: call.from,
-    alias, intent: call.intent, task: call.task, code });
+    alias, intent: call.intent, task: call.task, code, trusted });
   if (result.status !== 'delivered') throw new Error('Hermes Telegram button delivery failed');
 }
 

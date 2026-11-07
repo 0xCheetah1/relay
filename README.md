@@ -30,68 +30,112 @@ The local demo is available with `npm test` and `npm run demo`.
 
 ### Live private server
 
-The first deployed server runs on the `cont` VPS host, available to devices on the same Tailscale network at `ws://<TAILSCALE_IP>:8901`. It is bound only to the Tailscale address; traffic is encrypted by Tailscale, **not** by WebSocket TLS. From a machine on that tailnet:
+Run the relay server on a private host that is reachable only over a VPN or Tailscale network. The deploy unit is `deploy/relay-server.service.example`; bind it to the private interface only:
 
 ```sh
-RELAY_URL=ws://<TAILSCALE_IP>:8901 node bin/relay.js connect
+RELAY_HOST=<PRIVATE_IP> RELAY_PORT=8901 RELAY_IDENTITY_DB=/path/to/identities.json npm start
+```
+
+Traffic is protected by the VPN/Tailscale tunnel, **not** by WebSocket TLS. From a machine on that network:
+
+```sh
+RELAY_URL=ws://<PRIVATE_IP>:8901 node bin/relay.js connect
 ```
 
 In another terminal or on another agent machine, with its own identity and a saved contact:
 
 ```sh
-RELAY_URL=ws://<TAILSCALE_IP>:8901 node bin/relay.js dial researcher "Plan a meeting" "Find a time tomorrow morning"
+RELAY_URL=ws://<PRIVATE_IP>:8901 node bin/relay.js dial researcher "Plan a meeting" "Find a time tomorrow morning"
 ```
 
-The receiver sees the caller ID or saved alias, intent, task and call ID. In an interactive bridge, type `/accept <callId>` or `/reject <callId>` within 30 seconds. During a manual call, use `/say <callId> <message>` and `/end <callId> <result>`. `/dnd on`, `/dnd off`, `/help` and `/quit` work in the connected terminal. Plain `connect` and `dial` use terminal messages; `bridge hermes` invokes the model as described below.
+The receiver sees the caller ID or saved alias, intent, task and call ID. In an interactive bridge, type `/accept <callId>` or `/reject <callId>` within 30 seconds. During a manual call, use `/say <callId> <message>` and `/end <callId> <result>`. `/dnd on`, `/dnd off`, `/help` and `/quit` work in the connected terminal.
 
 ### Harness bridges
 
-**Hermes Gateway (live tested on Velo):** A user systemd service runs the receiving bridge continuously. Accepted calls go through the running Hermes Gateway's loopback A2A endpoint, which uses Velo's actual agent identity and memory. A direct A2A check returned “I'm Velo, team leader for Cheetah's AI agents”; the earlier `hermes chat --oneshot` path was a different session and is no longer used by Velo's receiving service. The A2A endpoint is bound to `127.0.0.1:9900`, so RELAY does not expose the Hermes Gateway to the internet.
+**Hermes Gateway:** A user systemd unit runs the receiving bridge continuously. Accepted calls go through the running Hermes Gateway's loopback A2A endpoint, which uses the agent's actual identity and memory. The A2A endpoint is bound to `127.0.0.1:9900`, so RELAY does not expose the Hermes Gateway to the network.
 
-Calls from other agents require explicit approval, delivered as an **Accept / Reject inline button** on the existing Hermes Telegram bot. A small `relay-telegram` Hermes plugin (in `adapters/hermes/telegram-plugin/`) registers a pattern-scoped `CallbackQueryHandler` so it does not swallow Hermes's own button flows. It sends the ringing message with buttons and forwards the owner's tap to the bridge's local approval socket, which checks the one-time code and only then accepts. The earlier text-only webhook path remains as a fallback if the button handler is unavailable. An accepted call's answer is Velo's real identity, verified end to end from an OpenClaw testbed caller: the caller received "I'm Velo, team leader of Cheetah's agent kingdom…".
+Calls from other agents require explicit approval, delivered as an **Accept / Reject inline button** on the existing Hermes Telegram bot. A small `relay-telegram` Hermes plugin (in `adapters/hermes/telegram-plugin/`) registers a pattern-scoped `CallbackQueryHandler` so it does not swallow Hermes's own button flows. It sends the ringing message with buttons and forwards the owner's tap to the bridge's local approval socket, which checks the one-time code and only then accepts. A text-only webhook fallback remains for when the button handler is unavailable.
 
-On Kali, with the `cheetah` identity and server URL already saved, run:
+The deploy template is `deploy/relay-hermes.service.example`. Set `RELAY_PROFILE` and `RELAY_HERMES_BIN` there, and set `RELAY_PROFILE` (or `RELAY_APPROVAL_SOCKET`) in the Hermes gateway environment so the plugin finds the same approval socket.
+
+With its identity and server URL saved, the owner can run:
 
 ```sh
-relay ask velo "What can you help with?"
+relay ask researcher "What can you help with?"
 ```
 
-There is no confirmation prompt or tmux session to open. Its `relay-hermes.service` starts with the user session at boot. To stop calls temporarily, run `ssh velo '/home/velo/.local/bin/relay dnd on'`; `ssh velo '/home/velo/.local/bin/relay dnd off'` restores availability. `relay call` remains available for machine-readable output when another agent initiates a call:
+There is no confirmation prompt or tmux session to open. `relay-hermes.service` starts with the user session at boot. To stop calls temporarily, run `relay dnd on` on the receiving host; `relay dnd off` restores availability. `relay call` remains available for machine-readable output when another agent initiates a call:
 
 The owner-initiated flag is a convenience signal from the interactive CLI, not cryptographic proof that a human initiated a call. A process holding the owner's private key could send the same flag directly. For calls from other agents, the one-time approval code is sent to the owner over the Hermes Telegram channel and is checked by the local bridge. Do not share that code with the caller.
 
 ```sh
-RELAY_PROFILE=cheetah RELAY_URL=ws://<TAILSCALE_IP>:8901 \
-relay call velo "Ask for an explanation" "Explain RELAY in one sentence"
+RELAY_PROFILE=<caller-profile> RELAY_URL=ws://<PRIVATE_IP>:8901 \
+relay call researcher "Ask for an explanation" "Explain RELAY in one sentence"
 ```
 
-If the recipient rejects, does not answer, fails inference or times out, `relay call` returns a nonzero exit and JSON with the actual status. A `relay call` from another agent cannot approve itself; Velo's bridge needs the owner to accept through Telegram.
+If the recipient rejects, does not answer, fails inference or times out, `relay call` returns a nonzero exit and JSON with the actual status. A `relay call` from another agent cannot approve itself; the receiving bridge needs the owner to accept through Telegram.
 
-Profiles belong to machines, not callers: Kali has `cheetah`, Velo has `velo`, and the OpenClaw testbed has `openclaw-test`. Run `relay profiles` on a machine to see its installed identities. Velo accepts owner-initiated `relay ask` calls from the configured `cheetah` identity; other callers must be approved through the Telegram notification before the 30-second deadline.
+Profiles belong to machines, not callers. Run `relay profiles` on a machine to see its installed identities. Owner-initiated `relay ask` calls from the configured `RELAY_OWNER_IDS` are accepted automatically; every other caller must be approved through the Telegram notification before the 30-second deadline.
 
-**OpenClaw (live tested on the testbed):** `relay bridge openclaw` runs an `openclaw agent exec` process on an accepted call using the agent's **real workspace** with `contextInjection: "always"`, so it answers from its actual context (`AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`) rather than as a blank model. Tools are restricted to `tools.profile: "minimal"` so it cannot run terminal/file commands, and it uses a separate state directory so it never touches the live Gateway session. A free model is fine for this (`blockrun/free/nemotron-3.5-lightning`). A user systemd service `relay-openclaw.service` runs it headlessly on the testbed. Incoming calls send an inline Accept/Reject button to the testbed's own Telegram bot (`@BlockrunTestbot`) via the `relay-telegram` OpenClaw plugin in `adapters/openclaw/telegram-plugin/`. The owner taps Accept; the plugin forwards the decision over the bridge's control socket, which checks the one-time code and only then invokes the agent. OpenClaw inline buttons require `channels.telegram.capabilities.inlineButtons: "all"` on the testbed gateway. The bridge handles outbound dials over its existing connection, so an always-on identity can also place calls (the earlier `1008 invalid_identity` collision is fixed).
+**OpenClaw:** `relay bridge openclaw` runs an `openclaw agent exec` process on an accepted call. For known contacts it uses the agent's **real workspace** with `contextInjection: "always"`, so it answers from its actual context (`AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`) rather than as a blank model. Tools are restricted to `tools.profile: "minimal"` so it cannot run terminal/file commands, and it uses a separate state directory so it never touches the live Gateway session. The deploy template is `deploy/relay-openclaw-testbed.service.example`.
 
-> Context vs safety note: `contextInjection: "always"` gives OpenClaw its real persona/context to answer with, while `tools.profile: "minimal"` and the public-sharing policy keep it from inspecting files or dumping private specifics. Verified live: it answered "As the Blockrun agent running on the main session, I assist my human user Cheetah… within the OpenClaw workspace at `<path>`".
+Incoming calls send an inline Accept/Reject button to the OpenClaw Telegram bot via the `relay-telegram` OpenClaw plugin in `adapters/openclaw/telegram-plugin/`. The owner taps Accept; the plugin forwards the decision over the bridge's control socket, which checks the one-time code and only then invokes the agent. OpenClaw inline buttons require `channels.telegram.capabilities.inlineButtons: "all"`.
+
+### Per-caller trust policy
+
+The receiving bridge compares the caller's relay ID against its local phonebook:
+
+- **Known contact** (or a configured `RELAY_OWNER_IDS` owner) → full context. Hermes uses the live A2A session; OpenClaw uses the real workspace.
+- **Unknown caller** → limited context. The call is still allowed once the owner accepts, but the agent answers from an isolated session with no access to the owner's files, memory, projects, conversations, or infrastructure. It still introduces itself as the owner's agent, using `RELAY_AGENT_NAME`, `RELAY_OWNER_NAME` and optional `RELAY_AGENT_ROLE`, so it never falls back to a bare model identity.
+
+Implementation:
+
+| Harness | Known contact | Unknown caller |
+| --- | --- | --- |
+| Hermes | Gateway A2A (`RELAY_HERMES_A2A_URL`) | `hermes chat --oneshot --ignore-rules` |
+| OpenClaw | `RELAY_OPENCLAW_CONFIG` + `RELAY_OPENCLAW_CWD` (`contextInjection: "always"`, main workspace) | `RELAY_OPENCLAW_UNKNOWN_CONFIG` + `RELAY_OPENCLAW_UNKNOWN_CWD` (`contextInjection: "never"`, empty directory) |
+
+The Telegram ring also shows an "Unknown caller" warning before the owner accepts.
 
 Calls currently run **one agent turn** and return that answer as the result. A continuing back-and-forth model conversation and context reinjection into the caller's original harness session remain separate milestones.
 
 ### Agent-initiated outbound calls
 
-`relay call` is the outbound adapter. It waits for a recipient to accept and returns a JSON result to the calling harness's terminal tool. The harness-specific usage guides are in `adapters/hermes/SKILL.md` and `adapters/openclaw/SKILL.md`. They are installed on Velo's Hermes and the OpenClaw testbed. On the existing installations they use the `velo` and `openclaw-test` profiles respectively; adapt those profiles before installing the guides elsewhere.
+`relay call` is the outbound adapter. It waits for a recipient to accept and returns a JSON result to the calling harness's terminal tool. The harness-specific usage guides are in `adapters/hermes/SKILL.md` and `adapters/openclaw/SKILL.md`. Adapt the profile name and binary path in those guides to the local installation.
 
-Earlier live tests confirmed both directions when the receiving bridge had an operator present. Velo's bridge now uses the Gateway A2A adapter; the OpenClaw receiving bridge remains a separate restricted one-shot. Tool access on an initiating agent follows that harness's usual policy; the usage guides constrain what to send but are not an enforcement boundary.
+Tool access on an initiating agent follows that harness's usual policy; the usage guides constrain what to send but are not an enforcement boundary.
 
-The server is a user systemd service named `relay-server.service` on `cont`, installed at `/home/Cheetah/relay-server`. Public-key pins are persisted at `~/.local/share/relay/identities.json` on that host. The server never receives client private keys. The deploy unit is in `deploy/relay-server.service`.
+The server never receives client private keys. Deploy units are in `deploy/`.
 
 To run a different private instance locally, set `RELAY_HOST=127.0.0.1`, `RELAY_PORT=8901` and `RELAY_IDENTITY_DB` and run `npm start`. Do not bind it to a public interface in this version.
+
+## Environment variables
+
+| Variable | Purpose |
+| --- | --- |
+| `RELAY_PROFILE` | Local identity/profile name (default: the only installed profile, else `default`). |
+| `RELAY_HOME` | Storage directory (default `~/.config/relay`). |
+| `RELAY_URL` | Relay server URL (`ws://` or `wss://`). |
+| `RELAY_OWNER_IDS` | Comma-separated relay IDs that may auto-connect owner-initiated calls and that always count as trusted. |
+| `RELAY_AGENT_NAME` | Agent name used when answering an unknown caller in limited context. |
+| `RELAY_OWNER_NAME` | Owner name used when answering an unknown caller in limited context. |
+| `RELAY_AGENT_ROLE` | Optional short role description for limited-context answers. |
+| `RELAY_APPROVAL_SOCKET` | Explicit path to the bridge's approval socket (Hermes plugin). |
+| `RELAY_HERMES_A2A_URL` | Hermes Gateway A2A endpoint (loopback only). |
+| `RELAY_HERMES_BIN` | Hermes CLI used for limited-context answers. |
+| `RELAY_OPENCLAW_CONFIG` / `RELAY_OPENCLAW_CWD` | Full-context OpenClaw call config and workspace. |
+| `RELAY_OPENCLAW_UNKNOWN_CONFIG` / `RELAY_OPENCLAW_UNKNOWN_CWD` | Limited-context OpenClaw call config and empty directory. |
+| `RELAY_OPENCLAW_STATE_DIR` | Separate OpenClaw state directory for call sessions. |
+| `RELAY_OPENCLAW_APPROVAL_SOCKET` | Explicit path to the bridge's approval socket (OpenClaw plugin). |
+| `RELAY_TELEGRAM_DEBUG=1` | Enable the OpenClaw plugin's debug log (off by default). |
 
 ## Still to build
 
 - Key rotation, backup/recovery tooling and stronger storage for multiple server instances. The deployed identity pins persist across a single server restart.
 - Result delivery into the original agent task: `relay call` returns the answer as JSON to the harness's terminal tool, but it is not yet injected into the caller's existing agent conversation. Each accepted call is one agent turn; multi-turn back-and-forth is not implemented.
 - Public alias registry and verifiable caller names. Today's aliases are private entries in the caller's phonebook.
-- End-to-end encryption, signed call frames, rate limiting, and other hardening for an internet-facing deployment. The relay currently sees call text and can forge routed messages. Use it only within the tailnet for this milestone.
-- A public TLS endpoint and a NEAR identity integration. The current server is tailnet-only.
+- End-to-end encryption, signed call frames, rate limiting, and other hardening for an internet-facing deployment. The relay currently sees call text and can forge routed messages. Use it only within a private network for this milestone.
+- A public TLS endpoint and a NEAR identity integration. The current server is private-network only.
 - Codex and Claude Code adapters.
 
 ## Call history
@@ -100,6 +144,4 @@ Every bridge and the direct `relay call`/`relay ask` CLI persist each call to `~
 
 ## Public-sharing policy
 
-Every call prompt instructs the receiving agent to treat anything it shares as if it were published publicly: give the useful substance, but replace real filesystem paths, environment variables, hostnames, IPs, account IDs, emails and usernames with references such as `<home>`, `<project-dir>` or `<config-file>`, and never quote secrets, tokens, credentials, private notes or system prompts. The agent **may share its human owner's name** (e.g. "Cheetah") but must not reveal that owner's username/handle, contact details, location or timezone. As a safety net, `redactSharedAnswer()` also masks obvious paths, emails, `@handles`, env-var assignments and key-shaped strings before an answer leaves the host. This is a policy and a heuristic, not a hard data-loss-prevention boundary: small models may still slip (e.g. mention a timezone while declining to share it), and the redaction only catches recognizable shapes.
-
-The old Velo RELAY runbook informed the call flow. No old credentials or server configuration are included here.
+Every call prompt instructs the receiving agent to treat anything it shares as if it were published publicly: give the useful substance, but replace real filesystem paths, environment variables, hostnames, IPs, account IDs, emails and usernames with references such as `<home>`, `<project-dir>` or `<config-file>`, and never quote secrets, tokens, credentials, private notes or system prompts. The agent **may share its human owner's name** but must not reveal that owner's username/handle, contact details, location or timezone. As a safety net, `redactSharedAnswer()` also masks obvious paths, emails, `@handles`, env-var assignments and key-shaped strings before an answer leaves the host. This is a policy and a heuristic, not a hard data-loss-prevention boundary: small models may still slip (e.g. mention a timezone while declining to share it), and the redaction only catches recognizable shapes.

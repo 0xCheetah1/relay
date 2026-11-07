@@ -240,16 +240,17 @@ if (command === 'profiles') {
   watchFile(statePath, { interval: 500 }, refreshDnd);
   client.on('call.ringing', (event) => {
     const { callId, from, intent, task, ownerInitiated } = event;
+    const trusted = ownerIds.has(from) || aliases.has(from);
     pending.set(callId, event);
     startCallRecord(callId, { direction: 'incoming', peer: from, peerAlias: aliases.get(from) ?? null, intent, task });
-    console.log(`\nINCOMING ${callId} from ${aliases.get(from) ?? from}\nIntent: ${intent}\nTask: ${task}\n/accept ${callId} or /reject ${callId} (expires in 30s)`);
+    console.log(`\nINCOMING ${callId} from ${aliases.get(from) ?? from}${trusted ? '' : ' (unknown caller)'}\nIntent: ${intent}\nTask: ${task}\n/accept ${callId} or /reject ${callId} (expires in 30s)`);
     if (harness && ownerIds.has(from) && ownerInitiated && !dnd) {
       console.log(`Owner initiated call ${callId}; connecting`);
       acceptCall(callId);
     } else if (harness === 'hermes-gateway' && !dnd) {
       const code = approvalCode();
       notificationCodes.set(callId, { code, attempts: 0 });
-      const ring = { call: event, alias: aliases.get(from) ?? from, code };
+      const ring = { call: event, alias: aliases.get(from) ?? from, code, trusted };
       (async () => {
         try {
           if (!process.env.RELAY_HERMES_TELEGRAM_SOCKET) throw new Error('No Telegram button handler configured');
@@ -269,7 +270,7 @@ if (command === 'profiles') {
       notificationCodes.set(callId, { code, attempts: 0 });
       sendOpenClawRing({ bin: process.env.RELAY_OPENCLAW_BIN,
         ownerId: process.env.RELAY_OPENCLAW_TELEGRAM_OWNER,
-        call: event, alias: aliases.get(from) ?? from, code }).catch((error) => {
+        call: event, alias: aliases.get(from) ?? from, code, trusted }).catch((error) => {
         console.error(`Call ${callId} could not notify Telegram: ${error.message}`);
       });
     }
@@ -280,12 +281,22 @@ if (command === 'profiles') {
     const call = approved.get(callId);
     if (!call) return;
     approved.delete(callId);
+    const trusted = ownerIds.has(call.from) || aliases.has(call.from);
+    console.log(`Call ${callId}: ${trusted ? 'known contact - full context' : 'unknown caller - minimal context'}`);
     const controller = new AbortController();
     active.set(callId, controller);
     invokeHarness(harness, call, { signal: controller.signal,
-      command: harness === 'hermes' ? process.env.RELAY_HERMES_BIN : process.env.RELAY_OPENCLAW_BIN,
+      policy: trusted ? 'full' : 'limited',
+      command: harness === 'openclaw' ? process.env.RELAY_OPENCLAW_BIN : process.env.RELAY_HERMES_BIN,
       config: process.env.RELAY_OPENCLAW_CONFIG, cwd: process.env.RELAY_OPENCLAW_CWD,
       stateDir: process.env.RELAY_OPENCLAW_STATE_DIR,
+      limitedConfig: process.env.RELAY_OPENCLAW_UNKNOWN_CONFIG,
+      limitedCwd: process.env.RELAY_OPENCLAW_UNKNOWN_CWD,
+      identity: {
+        agentName: process.env.RELAY_AGENT_NAME,
+        ownerName: process.env.RELAY_OWNER_NAME,
+        role: process.env.RELAY_AGENT_ROLE,
+      },
     }).then((answer) => {
       if (active.get(callId) === controller) client.end(callId, answer.slice(0, 4000));
     }).catch((error) => {

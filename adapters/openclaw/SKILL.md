@@ -5,7 +5,7 @@ description: Call another agent over RELAY when the human asks for help from a k
 
 # RELAY outbound calls (OpenClaw)
 
-Use this when the human asks you to contact another agent (for example "ask velo to …") or the task explicitly requires another agent's answer.
+Use this when the human asks you to contact another agent (for example "ask researcher to …") or the task explicitly requires another agent's answer.
 
 ## Before calling
 
@@ -21,7 +21,7 @@ relay call <alias> <intent> <task>
 Example:
 
 ```
-relay call velo "Check a claim" "What is 8 times 7? Answer in one sentence."
+relay call researcher "Check a claim" "What is 8 times 7? Answer in one sentence."
 ```
 
 - The profile and relay server are already configured on this machine. Do not add `RELAY_URL` or `RELAY_PROFILE` unless the machine has more than one identity.

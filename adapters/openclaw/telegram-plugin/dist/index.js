@@ -5,10 +5,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const OWNER_ID = String(process.env.RELAY_OPENCLAW_TELEGRAM_OWNER ?? "");
-const SOCKET = process.env.RELAY_OPENCLAW_APPROVAL_SOCKET ?? join(homedir(), ".config", "relay", "openclaw-test.sock");
+const SOCKET = process.env.RELAY_OPENCLAW_APPROVAL_SOCKET
+  ?? join(homedir(), ".config", "relay", `${process.env.RELAY_PROFILE ?? "default"}.sock`);
+const DEBUG = process.env.RELAY_TELEGRAM_DEBUG === "1";
 
 function log(message) {
-  try { appendFileSync("/tmp/relay-telegram.log", `${new Date().toISOString()} ${message}\n`); } catch {}
+  if (!DEBUG) return;
+  try { appendFileSync(join(homedir(), ".config", "relay", "relay-telegram.log"), `${new Date().toISOString()} ${message}\n`); } catch {}
 }
 
 function sendDecision(request) {

@@ -190,6 +190,21 @@ test('OpenClaw adapter requires restricted config and returns a real subprocess 
   await assert.rejects(invokeHarness('openclaw', { from: 'rly_x', intent: 'Quick review', task: 'Review this idea' }, options), /contextInjection=always/);
 });
 
+test('unknown-caller policy uses the limited OpenClaw config', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'relay-adapter-limited-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const config = join(directory, 'openclaw.json');
+  const limitedConfig = join(directory, 'openclaw-limited.json');
+  const command = join(directory, 'openclaw');
+  writeFileSync(command, '#!/usr/bin/env node\nlet s=""; process.stdin.on("data",c=>s+=c); process.stdin.on("end",()=>console.log(JSON.stringify({ok:true,status:"ok",final:"I am the owner agent."})))\n', { mode: 0o700 });
+  writeFileSync(config, JSON.stringify({ tools: { profile: 'minimal' }, agents: { defaults: { contextInjection: 'always' } } }));
+  writeFileSync(limitedConfig, JSON.stringify({ tools: { profile: 'minimal' }, agents: { defaults: { contextInjection: 'never' } } }));
+  const options = { command, config, limitedConfig, cwd: directory, limitedCwd: directory, stateDir: directory, policy: 'limited', identity: { agentName: 'Scout', ownerName: 'Alex' } };
+  assert.equal(await invokeHarness('openclaw', { from: 'rly_x', intent: 'Quick review', task: 'Review this idea' }, options), 'I am the owner agent.');
+  writeFileSync(limitedConfig, JSON.stringify({ tools: { profile: 'minimal' }, agents: { defaults: { contextInjection: 'always' } } }));
+  await assert.rejects(invokeHarness('openclaw', { from: 'rly_x', intent: 'Quick review', task: 'Review this idea' }, options), /contextInjection=never/);
+});
+
 test('noninteractive call returns the recipient result as JSON', async (t) => {
   const env = await setup();
   t.after(() => env.close());
@@ -221,15 +236,24 @@ test('call prompt requires treating shared info as public', () => {
   assert.match(prompt, /username or handle/i);
 });
 
+test('limited-context call prompt keeps identity but drops private access', () => {
+  const prompt = buildCallPrompt({ from: 'rly_u', intent: 'Who are you?', task: 'Introduce yourself' },
+    { identity: { limited: true, agentName: 'Scout', ownerName: 'Alex' } });
+  assert.match(prompt, /LIMITED-CONTEXT CALL/);
+  assert.match(prompt, /You are Scout, the personal agent of Alex/);
+  assert.match(prompt, /do NOT have access to your owner's files/);
+  assert.ok(prompt.indexOf('LIMITED-CONTEXT CALL') < prompt.indexOf('PUBLIC-SHARING POLICY'));
+});
+
 test('redactSharedAnswer masks paths, emails, env vars and secrets', () => {
-  const input = "Telegram @DxCheetah says hello. Config at /home/velo/secret/project/.env, contact ada@example.com, DB_PASSWORD=hunter2, key sk_live_abcdefghijklmnop1234, hash 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.";
+  const input = "Telegram @test_handle42 says hello. Config at /home/example/secret/project/.env, contact ada@example.com, DB_PASSWORD=hunter2, key sk_live_abcdefghijklmnop1234, hash 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.";
   const out = redactSharedAnswer(input);
-  assert.doesNotMatch(out, /\/home\/velo/);
+  assert.doesNotMatch(out, /\/home\/example/);
   assert.doesNotMatch(out, /ada@example\.com/);
   assert.doesNotMatch(out, /hunter2/);
   assert.doesNotMatch(out, /sk_live_/);
   assert.doesNotMatch(out, /0123456789abcdef0123456789abcdef/);
-  assert.doesNotMatch(out, /@DxCheetah/);
+  assert.doesNotMatch(out, /@test_handle42/);
   assert.match(out, /<handle>/);
   assert.match(out, /<email>/);
   assert.match(out, /<env>/);

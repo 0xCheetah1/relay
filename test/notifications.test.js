@@ -29,7 +29,7 @@ test('Telegram ring uses Hermes webhook signature and sends an approval code', a
   await sendTelegramRing({ url: `http://127.0.0.1:${server.address().port}/`, secretFile,
     call: { callId: 'call-one', from: 'rly_sender', intent: 'Research', task: 'Check a claim' }, alias: 'researcher', code });
   assert.equal(delivered.signatureValid, true);
-  assert.deepEqual(delivered.body, { callId: 'call-one', from: 'rly_sender', alias: 'researcher', intent: 'Research', task: 'Check a claim', code });
+  assert.deepEqual(delivered.body, { callId: 'call-one', from: 'rly_sender', alias: 'researcher', intent: 'Research', task: 'Check a claim', code, trusted: true });
 });
 
 test('local approval socket requires the active call and its code', async (t) => {

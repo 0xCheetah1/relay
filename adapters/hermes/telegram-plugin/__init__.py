@@ -18,7 +18,12 @@ _PENDING: dict[str, dict] = {}
 
 def _paths():
     home = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
-    return home / "config.yaml", Path.home() / ".config/relay/telegram.sock", Path.home() / ".config/relay/velo.sock"
+    relay_home = Path(os.environ.get("RELAY_HOME", Path.home() / ".config" / "relay"))
+    approval = os.environ.get("RELAY_APPROVAL_SOCKET")
+    if not approval:
+        profile = os.environ.get("RELAY_PROFILE", "default")
+        approval = str(relay_home / f"{profile}.sock")
+    return home / "config.yaml", relay_home / "telegram.sock", Path(approval)
 
 
 _HOME_CHANNEL = re.compile(r"^\s*TELEGRAM_HOME_CHANNEL\s*:\s*(\d+)\s*$", re.MULTILINE)
@@ -112,10 +117,13 @@ def register(ctx):
                     alias = html.escape(str(call.get("alias", call["from"]))[:80])
                     intent = html.escape(str(call["intent"])[:160])
                     task = html.escape(str(call["task"])[:1400])
+                    trusted = bool(call.get("trusted", True))
+                    warning = "" if trusted else "⚠ <b>Unknown caller</b> — not in your phonebook. Accepting answers with minimal context.\n\n"
                     text = (
                         "📞 <b>Incoming RELAY call</b>\n\n"
                         f"From: <b>{alias}</b>\n"
-                        f"Intent: <i>{intent}</i>\n\n"
+                        + warning
+                        + f"Intent: <i>{intent}</i>\n\n"
                         "<b>Task</b>\n"
                         f"<i>{task}</i>\n\n"
                         "⏳ Answer within 30 seconds.\n"

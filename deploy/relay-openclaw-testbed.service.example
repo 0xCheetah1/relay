@@ -11,8 +11,13 @@ Environment=RELAY_URL=ws://<TAILSCALE_IP>:8901
 Environment=RELAY_OPENCLAW_BIN=<path-to-openclaw-binary>
 Environment=RELAY_OPENCLAW_CONFIG=<path-to-restricted-openclaw-config-json>
 Environment=RELAY_OPENCLAW_CWD=<openclaw-workspace-directory>
+Environment=RELAY_OPENCLAW_UNKNOWN_CONFIG=<path-to-limited-openclaw-config-json>
+Environment=RELAY_OPENCLAW_UNKNOWN_CWD=<dedicated-empty-directory>
 Environment=RELAY_OPENCLAW_STATE_DIR=<separate-openclaw-state-directory>
 Environment=RELAY_OPENCLAW_TELEGRAM_OWNER=<OWNER_TELEGRAM_ID>
+Environment=RELAY_AGENT_NAME=<agent-name>
+Environment=RELAY_OWNER_NAME=<owner-name>
+Environment=RELAY_AGENT_ROLE=<short-agent-role>
 Environment=RELAY_HEADLESS=1
 Environment=RELAY_OWNER_IDS=<OWNER_RELAY_ID>
 ExecStart=%h/.local/bin/relay bridge openclaw
