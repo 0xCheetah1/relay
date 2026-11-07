@@ -243,7 +243,8 @@ if (command === 'profiles') {
     const trusted = ownerIds.has(from) || aliases.has(from);
     pending.set(callId, event);
     startCallRecord(callId, { direction: 'incoming', peer: from, peerAlias: aliases.get(from) ?? null, intent, task });
-    console.log(`\nINCOMING ${callId} from ${aliases.get(from) ?? from}${trusted ? '' : ' (unknown caller)'}\nIntent: ${intent}\nTask: ${task}\n/accept ${callId} or /reject ${callId} (expires in 30s)`);
+    const ringSeconds = event.deadline ? Math.max(0, Math.round((event.deadline - Date.now()) / 1000)) : 30;
+    console.log(`\nINCOMING ${callId} from ${aliases.get(from) ?? from}${trusted ? '' : ' (unknown caller)'}\nIntent: ${intent}\nTask: ${task}\n/accept ${callId} or /reject ${callId} (expires in ${ringSeconds}s)`);
     if (harness && ownerIds.has(from) && ownerInitiated && !dnd) {
       console.log(`Owner initiated call ${callId}; connecting`);
       acceptCall(callId);

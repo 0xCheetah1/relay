@@ -48,13 +48,13 @@ export const sendDecision = (path, request) => socketRequest(path, request);
 export const sendDial = (path, request) => socketRequest(path, request, { timeoutMs: 270_000 });
 
 export function sendOpenClawRing({ bin, ownerId, call, alias, code, trusted = true }) {
-  const text = `Incoming RELAY call\n\nFrom: ${alias}${trusted ? '' : '\nUnknown caller - not in your phonebook'}\nIntent: ${call.intent}\n\nTask\n${call.task}\n\n${trusted ? 'Answers use full context.' : 'Accepting answers with minimal context only.'}\nAnswer within 2 minutes.`;
+  const text = `📞 Incoming RELAY call\n\nFrom: ${alias}${trusted ? '' : '\n⚠️ Unknown caller — not in your phonebook'}\nIntent: ${call.intent}\n\n📋 Task\n${call.task}\n\n${trusted ? 'Answers use full context.' : 'Accepting answers with minimal context only.'}\n⏳ Answer within 2 minutes.`;
   const presentation = {
     blocks: [{
       type: 'buttons',
       buttons: [
-        { label: 'Accept', action: { type: 'callback', value: `rc:a:${call.callId}:${code}` } },
-        { label: 'Reject', action: { type: 'callback', value: `rc:r:${call.callId}:${code}` } },
+        { label: '✅ Accept', action: { type: 'callback', value: `rc:a:${call.callId}:${code}` } },
+        { label: '❌ Reject', action: { type: 'callback', value: `rc:r:${call.callId}:${code}` } },
       ],
     }],
   };
