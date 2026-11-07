@@ -32,6 +32,14 @@ export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '12
       peer.dnd = message.dnd;
       return send(socket, { type: 'presence.updated', dnd: peer.dnd });
     }
+    if (message.type === 'blocklist.set') {
+      if (!Array.isArray(message.blocked) || message.blocked.length > 500
+        || message.blocked.some((blocked) => typeof blocked !== 'string' || !ID_PATTERN.test(blocked))) {
+        return send(socket, { type: 'error', code: 'invalid_blocklist' });
+      }
+      peer.blocked = new Set(message.blocked);
+      return send(socket, { type: 'blocklist.updated', blocked: [...peer.blocked] });
+    }
     if (message.type === 'call.request') {
       const { callId, to, intent, task } = message;
       if (typeof callId !== 'string' || !/^[0-9a-f-]{36}$/.test(callId) || !ID_PATTERN.test(to ?? '') || !cleanText(intent, 160) || !cleanText(task, 2000)) {
@@ -40,7 +48,11 @@ export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '12
       if (calls.has(callId)) return send(socket, { type: 'error', code: 'duplicate_call', callId });
       const recipient = peers.get(to);
       if (!recipient) return send(socket, { type: 'call.unavailable', callId, reason: 'peer_offline' });
-      if (recipient.dnd) return send(socket, { type: 'call.unavailable', callId, reason: 'recipient_dnd' });
+      if (recipient.blocked?.has(id)) return send(socket, { type: 'call.unavailable', callId, reason: 'caller_blocked' });
+      if (recipient.dnd) {
+        send(recipient.socket, { type: 'call.missed', callId, from: id, intent, task, at: Date.now(), reason: 'recipient_dnd' });
+        return send(socket, { type: 'call.unavailable', callId, reason: 'recipient_dnd' });
+      }
       if (to === id) return send(socket, { type: 'call.unavailable', callId, reason: 'self_call' });
       const call = { id: callId, from: id, to, state: 'ringing', timer: null };
       calls.set(callId, call);
@@ -104,7 +116,7 @@ export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '12
           catch { return socket.close(1011, 'identity_store_error'); }
           keys.set(id, publicKey);
         }
-        peer = { id, socket, dnd: false };
+        peer = { id, socket, dnd: false, blocked: new Set() };
         peers.set(id, peer);
         return send(socket, { type: 'auth.ok', id });
       }

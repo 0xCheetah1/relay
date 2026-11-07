@@ -58,16 +58,35 @@ test('unanswered calls expire, and DND makes the recipient unavailable', async (
   const updated = next(env.bob, 'presence.updated');
   env.bob.setDnd(true);
   await updated;
+  const missed = next(env.bob, 'call.missed');
   const unavailable = next(env.alice, 'call.unavailable');
   env.alice.dial('bob', { intent: 'Research', task: 'Summarize a document' });
   const dndEvent = await unavailable;
   assert.equal(dndEvent.type, 'call.unavailable');
   assert.equal(dndEvent.reason, 'recipient_dnd');
+  const missedEvent = await missed;
+  assert.equal(missedEvent.reason, 'recipient_dnd');
+  assert.equal(missedEvent.intent, 'Research');
   await env.bob.close();
   await new Promise((resolve) => setTimeout(resolve, 50));
   const offline = next(env.alice, 'call.unavailable');
   env.alice.dial('bob', { intent: 'Research', task: 'Summarize a document' });
   assert.equal((await offline).reason, 'peer_offline');
+});
+
+test('a blocked caller is rejected before the call rings', async (t) => {
+  const env = await setup();
+  t.after(() => env.close());
+  const updated = next(env.bob, 'blocklist.updated');
+  env.bob.setBlocked([env.alice.identity.id]);
+  assert.equal((await updated).blocked.length, 1);
+  let rang = false;
+  env.bob.once('call.ringing', () => { rang = true; });
+  const unavailable = next(env.alice, 'call.unavailable');
+  env.alice.dial('bob', { intent: 'Research', task: 'Check a claim' });
+  assert.equal((await unavailable).reason, 'caller_blocked');
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(rang, false);
 });
 
 test('calls have a hard deadline even if the peers keep sending messages', async (t) => {

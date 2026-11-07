@@ -7,7 +7,7 @@ import { invokeHarness } from '../src/adapters.js';
 import { createIdentity } from '../src/identity.js';
 import { RelayClient } from '../src/client.js';
 import { jsonStore } from '../src/store.js';
-import { approvalCode, sameCode, sendDecision, sendDial, sendInlineRing, sendOpenClawRing, sendTelegramRing, startApprovalSocket } from '../src/notifications.js';
+import { approvalCode, sameCode, sendDecision, sendDial, sendInlineNotice, sendInlineRing, sendOpenClawNotice, sendOpenClawRing, sendTelegramRing, startApprovalSocket } from '../src/notifications.js';
 
 const profileDir = process.env.RELAY_HOME ?? join(homedir(), '.config', 'relay');
 const profile = process.env.RELAY_PROFILE ?? (profiles().length === 1 ? profiles()[0] : 'default');
@@ -46,6 +46,7 @@ function describeReason(reason) {
   return {
     recipient_dnd: 'recipient is on Do Not Disturb',
     peer_offline: 'recipient is offline or not connected',
+    caller_blocked: 'caller is blocked by the recipient',
     self_call: 'cannot call your own relay ID',
     ring_timeout: 'recipient did not answer in time',
     call_timeout: 'call ended before an answer arrived',
@@ -85,6 +86,28 @@ if (command === 'profiles') {
   value.dnd = args[0] === 'on';
   store.save(value);
   console.log(`DND ${args[0]} for ${profile}`);
+} else if (command === 'block' && args.length === 1) {
+  const value = state();
+  const id = args[0].startsWith('rly_') ? args[0] : value.contacts?.[args[0]];
+  if (!id || !/^rly_[0-9a-f-]{36}$/.test(id)) throw new Error('Unknown alias or invalid relay ID');
+  value.blocked = [...new Set([...(value.blocked ?? []), id])];
+  store.save(value);
+  console.log(`Blocked ${args[0] === id ? id : `${args[0]} (${id})`}`);
+} else if (command === 'unblock' && args.length === 1) {
+  const value = state();
+  const id = args[0].startsWith('rly_') ? args[0] : value.contacts?.[args[0]];
+  if (!id) throw new Error('Unknown alias or invalid relay ID');
+  value.blocked = (value.blocked ?? []).filter((blocked) => blocked !== id);
+  store.save(value);
+  console.log(`Unblocked ${args[0] === id ? id : `${args[0]} (${id})`}`);
+} else if (command === 'blocked' && args.length === 0) {
+  const value = state();
+  const list = value.blocked ?? [];
+  if (list.length === 0) console.log('Blocklist is empty.');
+  else {
+    const byId = new Map(Object.entries(value.contacts ?? {}).map(([alias, id]) => [id, alias]));
+    for (const id of list) console.log(`${byId.get(id) ?? '?'}\t${id}`);
+  }
 } else if (['accept', 'reject'].includes(command) && args.length === 2) {
   state();
   const response = await sendDecision(join(profileDir, `${profile}.sock`), { action: command, callId: args[0], code: args[1] });
@@ -181,6 +204,7 @@ if (command === 'profiles') {
   const approved = new Map();
   const active = new Map();
   const callRecords = new Map();
+  const missed = [];
   const ownerIds = new Set((process.env.RELAY_OWNER_IDS ?? '').split(',').map((id) => id.trim()).filter(Boolean));
 
   function startCallRecord(callId, { direction, peer, peerAlias, intent, task }) {
@@ -244,15 +268,66 @@ if (command === 'profiles') {
   }) : null;
   let dnd = Boolean(value.dnd);
   if (dnd) client.setDnd(true);
+  let blocked = new Set(value.blocked ?? []);
+  client.setBlocked([...blocked]);
   const statePath = join(profileDir, `${profile}.json`);
-  const refreshDnd = () => {
-    const next = Boolean(store.load().dnd);
-    if (next !== dnd) { dnd = next; client.setDnd(dnd); }
+  async function flushMissed() {
+    if (missed.length === 0) return;
+    const items = missed.splice(0, missed.length);
+    const lines = items.slice(0, 10).map((record) => {
+      const when = record.startedAt ? record.startedAt.slice(0, 16).replace('T', ' ') : '?';
+      return `• ${record.peerAlias ?? record.peer}: ${record.intent ?? '(no intent)'} (${when})`;
+    });
+    const text = `📬 While on DND: ${items.length} missed call${items.length === 1 ? '' : 's'}\n\n${lines.join('\n')}${items.length > 10 ? `\n…and ${items.length - 10} more` : ''}\n\nRun "relay history" for details.`;
+    console.log(text);
+    try {
+      if (harness === 'openclaw') {
+        await sendOpenClawNotice({ bin: process.env.RELAY_OPENCLAW_BIN,
+          ownerId: process.env.RELAY_OPENCLAW_TELEGRAM_OWNER, text });
+      } else if (harness === 'hermes-gateway' && process.env.RELAY_HERMES_TELEGRAM_SOCKET) {
+        await sendInlineNotice(process.env.RELAY_HERMES_TELEGRAM_SOCKET, text);
+      }
+    } catch (error) {
+      console.error(`Missed-call summary not sent: ${error.message}`);
+    }
+  }
+  const sameSet = (a, b) => a.size === b.size && [...a].every((item) => b.has(item));
+  const refreshState = () => {
+    const next = store.load();
+    const nextDnd = Boolean(next.dnd);
+    if (nextDnd !== dnd) {
+      dnd = nextDnd;
+      client.setDnd(dnd);
+      if (!dnd) flushMissed();
+    }
+    const nextBlocked = new Set(next.blocked ?? []);
+    if (!sameSet(nextBlocked, blocked)) {
+      blocked = nextBlocked;
+      client.setBlocked([...blocked]);
+      console.log(`Blocklist updated (${blocked.size} caller${blocked.size === 1 ? '' : 's'})`);
+    }
   };
-  watchFile(statePath, { interval: 500 }, refreshDnd);
+  watchFile(statePath, { interval: 500 }, refreshState);
+  client.on('call.missed', (event) => {
+    const at = new Date(event.at ?? Date.now()).toISOString();
+    const record = { callId: event.callId, direction: 'incoming', peer: event.from, peerAlias: aliases.get(event.from) ?? null,
+      intent: event.intent ?? null, task: event.task ?? null, startedAt: at, endedAt: at,
+      status: 'missed', reason: event.reason ?? 'recipient_dnd', result: null, turns: [] };
+    persistRecord(record);
+    missed.push(record);
+    console.log(`Missed call ${event.callId} from ${aliases.get(event.from) ?? event.from} while on DND`);
+  });
   client.on('call.ringing', (event) => {
     const { callId, from, intent, task, ownerInitiated } = event;
     const trusted = ownerIds.has(from) || aliases.has(from);
+    if (blocked.has(from)) {
+      const at = new Date().toISOString();
+      persistRecord({ callId, direction: 'incoming', peer: from, peerAlias: aliases.get(from) ?? null,
+        intent, task, startedAt: at, endedAt: at, status: 'blocked', reason: 'caller_blocked', result: null, turns: [] });
+      console.log(`Blocked call ${callId} from ${from}`);
+      client.reject(callId);
+      return;
+    }
     pending.set(callId, event);
     startCallRecord(callId, { direction: 'incoming', peer: from, peerAlias: aliases.get(from) ?? null, intent, task });
     const ringSeconds = event.deadline ? Math.max(0, Math.round((event.deadline - Date.now()) / 1000)) : 30;
@@ -383,13 +458,13 @@ if (command === 'profiles') {
     } catch (error) { console.error(error.message); }
     }
   }
-  unwatchFile(statePath, refreshDnd);
+  unwatchFile(statePath, refreshState);
   await closeControl?.();
   const unfinished = [...active.values()];
   active.clear();
   for (const controller of unfinished) controller.abort();
   await client.close();
 } else {
-  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call <alias> <intent> <task> | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
+  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call <alias> <intent> <task> | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
   if (command) process.exitCode = 1;
 }

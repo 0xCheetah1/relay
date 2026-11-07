@@ -107,13 +107,18 @@ def register(ctx):
             async def handle(reader, writer):
                 try:
                     raw = await asyncio.wait_for(reader.readline(), timeout=2)
-                    if len(raw) > 8192:
+                    if len(raw) > 16384:
                         raise ValueError("Oversized RELAY call")
                     call = json.loads(raw)
+                    owner = _owner_chat_id()
+                    if call.get("action") == "notice":
+                        text = html.escape(str(call.get("text", ""))[:3500])
+                        await application.bot.send_message(chat_id=owner, text=text, parse_mode="HTML")
+                        writer.write(b'{"status":"delivered"}\n')
+                        return
                     call_id, code = call["callId"], call["code"]
                     if not _CALL_ID.fullmatch(call_id) or not _CODE.fullmatch(code):
                         raise ValueError("Invalid call identity")
-                    owner = _owner_chat_id()
                     alias = html.escape(str(call.get("alias", call["from"]))[:80])
                     intent = html.escape(str(call["intent"])[:160])
                     task = html.escape(str(call["task"])[:1400])

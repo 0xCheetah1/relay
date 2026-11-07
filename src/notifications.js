@@ -74,10 +74,31 @@ export function sendOpenClawRing({ bin, ownerId, call, alias, code, trusted = tr
   });
 }
 
+export function sendOpenClawNotice({ bin, ownerId, text }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(bin, ['message', 'send', '--channel', 'telegram', '--target', String(ownerId), '--message', text, '--json'],
+      { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (chunk) => { out += chunk; });
+    child.stderr.on('data', (chunk) => { err += chunk; });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) resolve(out);
+      else reject(new Error(`openclaw message send exited ${code}: ${err.slice(-300)}`));
+    });
+  });
+}
+
 export async function sendInlineRing(path, { call, alias, code, trusted = true }) {
   const result = await socketRequest(path, { callId: call.callId, from: call.from,
     alias, intent: call.intent, task: call.task, code, trusted });
   if (result.status !== 'delivered') throw new Error('Hermes Telegram button delivery failed');
+}
+
+export async function sendInlineNotice(path, text) {
+  const result = await socketRequest(path, { action: 'notice', text });
+  if (result.status !== 'delivered') throw new Error('Hermes Telegram notice delivery failed');
 }
 
 export async function startApprovalSocket(path, decide) {

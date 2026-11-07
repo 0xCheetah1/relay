@@ -61,6 +61,7 @@ export class RelayClient extends EventEmitter {
   }
 
   setDnd(dnd) { this.send({ type: 'presence.set', dnd }); }
+  setBlocked(ids) { this.send({ type: 'blocklist.set', blocked: ids }); }
   accept(callId) { this.send({ type: 'call.accept', callId }); }
   reject(callId) { this.send({ type: 'call.reject', callId }); }
   say(callId, text) { this.send({ type: 'call.message', callId, text }); }

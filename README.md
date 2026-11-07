@@ -97,6 +97,12 @@ Implementation:
 
 The Telegram ring also shows an "Unknown caller" warning before the owner accepts.
 
+### Blocklist
+
+Each identity keeps a local blocklist of relay IDs. `relay block <alias|id>` adds one, `relay unblock <alias|id>` removes it, and `relay blocked` lists them. The bridge sends the list to the relay server, which rejects calls from blocked IDs before ringing (`status: "unavailable"`, `reason: "caller_blocked"`). Blocked callers get no ring, no missed-call notice, and no presence or DND hint.
+
+Blocklists are per identity and stored in the profile JSON (`~/.config/relay/<profile>.json`), so they are not shared between machines.
+
 Calls currently run **one agent turn** and return that answer as the result. A continuing back-and-forth model conversation and context reinjection into the caller's original harness session remain separate milestones.
 
 ### Agent-initiated outbound calls
