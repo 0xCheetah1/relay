@@ -47,7 +47,7 @@ export const sendDecision = (path, request) => socketRequest(path, request);
 
 export const sendDial = (path, request) => socketRequest(path, request, { timeoutMs: 270_000 });
 
-export const sendControl = (path, request) => socketRequest(path, request, { timeoutMs: 140_000 });
+export const sendControl = (path, request) => socketRequest(path, request, { timeoutMs: 320_000 });
 
 export async function sendTelegramDirect({ token, chatId, text, inlineKeyboard, silent = false }) {
   if (!token) throw new Error('Missing Telegram bot token');

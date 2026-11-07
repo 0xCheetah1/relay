@@ -286,7 +286,7 @@ if (command === 'profiles') {
     });
   }
   const callWaiters = new Map();
-  function waitForCallEvent(callId, timeoutMs = 130_000) {
+  function waitForCallEvent(callId, timeoutMs = 300_000) {
     return new Promise((resolve) => {
       const timer = setTimeout(() => finish({ status: 'timeout', reason: 'wait_timeout', result: null }), timeoutMs);
       function finish(event) {
