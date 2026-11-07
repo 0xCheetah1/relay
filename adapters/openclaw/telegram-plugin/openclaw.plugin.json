@@ -1,0 +1,14 @@
+{
+  "id": "relay-telegram",
+  "name": "RELAY Telegram",
+  "description": "Incoming RELAY call approve/reject buttons for the OpenClaw Telegram bot.",
+  "version": "0.1.0",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  }
+}

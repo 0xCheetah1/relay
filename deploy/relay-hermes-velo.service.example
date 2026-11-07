@@ -1,0 +1,23 @@
+[Unit]
+Description=RELAY Hermes receiving bridge
+After=network-online.target hermes-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/relay-client
+Environment=RELAY_PROFILE=velo
+Environment=RELAY_URL=ws://<TAILSCALE_IP>:8901
+Environment=RELAY_HERMES_A2A_URL=http://127.0.0.1:9900/
+Environment=RELAY_HERMES_TELEGRAM_SOCKET=%h/.config/relay/telegram.sock
+Environment=RELAY_HERMES_WEBHOOK_URL=http://127.0.0.1:8644/webhooks/relay-incoming
+Environment=RELAY_HERMES_WEBHOOK_SECRET_FILE=%h/.config/relay/hermes-webhook.key
+Environment=RELAY_HEADLESS=1
+Environment=RELAY_OWNER_IDS=<OWNER_RELAY_ID>
+ExecStart=%h/.local/bin/relay bridge hermes-gateway
+Restart=always
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target

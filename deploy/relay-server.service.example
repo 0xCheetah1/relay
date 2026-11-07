@@ -1,0 +1,20 @@
+[Unit]
+Description=RELAY agent call server (tailnet only)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/relay-server
+Environment=RELAY_HOST=<TAILSCALE_IP>
+Environment=RELAY_PORT=8901
+Environment=RELAY_IDENTITY_DB=%h/.local/share/relay/identities.json
+Environment=RELAY_RING_MS=120000
+Environment=RELAY_CALL_MS=120000
+ExecStart=/usr/bin/node %h/relay-server/bin/server.js
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target

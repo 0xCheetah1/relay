@@ -1,0 +1,4 @@
+name: relay-telegram
+version: 0.1.0
+description: Send RELAY incoming calls to the existing Hermes Telegram bot with Accept and Reject buttons.
+provides_tools: []

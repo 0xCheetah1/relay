@@ -1,0 +1,16 @@
+{
+  "name": "relay-agent-calls",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "relay": "./bin/relay.js" },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "demo": "node examples/demo.js",
+    "start": "node bin/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}
