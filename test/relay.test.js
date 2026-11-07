@@ -181,11 +181,13 @@ test('OpenClaw adapter requires restricted config and returns a real subprocess 
   const config = join(directory, 'openclaw.json');
   const command = join(directory, 'openclaw');
   writeFileSync(command, '#!/usr/bin/env node\nlet s=""; process.stdin.on("data",c=>s+=c); process.stdin.on("end",()=>{if(!s.includes("Review this idea")) process.exit(3);console.log(JSON.stringify({ok:true,status:"ok",final:"The idea needs a clear user."}))})\n', { mode: 0o700 });
-  writeFileSync(config, JSON.stringify({ tools: { profile: 'minimal' }, agents: { defaults: { contextInjection: 'never' } } }));
+  writeFileSync(config, JSON.stringify({ tools: { profile: 'minimal' }, agents: { defaults: { contextInjection: 'always' } } }));
   const options = { command, config, cwd: directory, stateDir: directory };
   assert.equal(await invokeHarness('openclaw', { from: 'rly_x', intent: 'Quick review', task: 'Review this idea' }, options), 'The idea needs a clear user.');
-  writeFileSync(config, JSON.stringify({ tools: { profile: 'coding' }, agents: { defaults: { contextInjection: 'never' } } }));
+  writeFileSync(config, JSON.stringify({ tools: { profile: 'coding' }, agents: { defaults: { contextInjection: 'always' } } }));
   await assert.rejects(invokeHarness('openclaw', { from: 'rly_x', intent: 'Quick review', task: 'Review this idea' }, options), /tools.profile=minimal/);
+  writeFileSync(config, JSON.stringify({ tools: { profile: 'minimal' }, agents: { defaults: { contextInjection: 'never' } } }));
+  await assert.rejects(invokeHarness('openclaw', { from: 'rly_x', intent: 'Quick review', task: 'Review this idea' }, options), /contextInjection=always/);
 });
 
 test('noninteractive call returns the recipient result as JSON', async (t) => {

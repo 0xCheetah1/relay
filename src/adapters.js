@@ -109,9 +109,9 @@ export async function invokeHarness(kind, call, { timeoutMs = 45_000, signal, co
       throw new Error('RELAY_OPENCLAW_STATE_DIR must be a separate existing directory, not the active Gateway state');
     }
     const settings = JSON.parse(readFileSync(config, 'utf8'));
-    if (settings.tools?.profile !== 'minimal' || settings.agents?.defaults?.contextInjection !== 'never'
+    if (settings.tools?.profile !== 'minimal' || settings.agents?.defaults?.contextInjection !== 'always'
       || settings.tools?.allow || settings.tools?.alsoAllow || settings.tools?.byProvider || settings.agents?.entries?.length) {
-      throw new Error('OpenClaw call config must use tools.profile=minimal and contextInjection=never without expanded grants or agent entries');
+      throw new Error('OpenClaw call config must use tools.profile=minimal and contextInjection=always without expanded grants or agent entries');
     }
     output = await run(command ?? 'openclaw', ['agent', 'exec', '--config', config, '--cwd', cwd, '--timeout', String(Math.max(1, Math.floor(timeoutMs / 1000))), '--message-file', '-', '--json'], prompt, timeoutMs, signal,
       { ...process.env, OPENCLAW_STATE_DIR: stateDir });

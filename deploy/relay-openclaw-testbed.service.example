@@ -10,7 +10,7 @@ Environment=RELAY_PROFILE=openclaw-test
 Environment=RELAY_URL=ws://<TAILSCALE_IP>:8901
 Environment=RELAY_OPENCLAW_BIN=<path-to-openclaw-binary>
 Environment=RELAY_OPENCLAW_CONFIG=<path-to-restricted-openclaw-config-json>
-Environment=RELAY_OPENCLAW_CWD=<dedicated-empty-working-directory>
+Environment=RELAY_OPENCLAW_CWD=<openclaw-workspace-directory>
 Environment=RELAY_OPENCLAW_STATE_DIR=<separate-openclaw-state-directory>
 Environment=RELAY_OPENCLAW_TELEGRAM_OWNER=<OWNER_TELEGRAM_ID>
 Environment=RELAY_HEADLESS=1
