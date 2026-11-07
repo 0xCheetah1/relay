@@ -217,17 +217,20 @@ test('call prompt requires treating shared info as public', () => {
   assert.match(prompt, /published publicly/i);
   assert.match(prompt, /Replace real filesystem paths/i);
   assert.match(prompt, /environment variables/i);
+  assert.match(prompt, /may share your human owner's name/i);
+  assert.match(prompt, /username or handle/i);
 });
 
 test('redactSharedAnswer masks paths, emails, env vars and secrets', () => {
-  const input = 'Config at /home/velo/secret/project/.env, contact ada@example.com, DB_PASSWORD=hunter2, key sk_live_abcdefghijklmnop1234, hash 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  const input = "Telegram @DxCheetah says hello. Config at /home/velo/secret/project/.env, contact ada@example.com, DB_PASSWORD=hunter2, key sk_live_abcdefghijklmnop1234, hash 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.";
   const out = redactSharedAnswer(input);
   assert.doesNotMatch(out, /\/home\/velo/);
   assert.doesNotMatch(out, /ada@example\.com/);
   assert.doesNotMatch(out, /hunter2/);
   assert.doesNotMatch(out, /sk_live_/);
   assert.doesNotMatch(out, /0123456789abcdef0123456789abcdef/);
-  assert.match(out, /<path>/);
+  assert.doesNotMatch(out, /@DxCheetah/);
+  assert.match(out, /<handle>/);
   assert.match(out, /<email>/);
   assert.match(out, /<env>/);
   assert.match(out, /<redacted>/);
