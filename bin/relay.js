@@ -504,9 +504,9 @@ if (command === 'profiles') {
     }
   }
 
-  async function sendCallEndedNotice({ peer, status, reason, result }) {
+  async function sendCallEndedNotice({ peer, status, reason, result, direction }) {
     const lines = [`📴 Call ended${peer ? ` — ${peer}` : ''}`, `Status: ${status}${reason ? ` (${describeReason(reason)})` : ''}`];
-    if (result) lines.push(`Result: ${String(result).slice(0, 300)}`);
+    if (direction === 'incoming' && result) lines.push(`Result: ${String(result).slice(0, 300)}`);
     const text = lines.join('\n');
     try {
       if (harness === 'openclaw') {
@@ -546,7 +546,7 @@ if (command === 'profiles') {
     finishCallRecord(callId, { status, reason, result });
     resolveCallWaiters(callId, { status, reason, result });
     console.log(`Call ${callId} ${status}${result ? `; result: ${result}` : ''}`);
-    if (wasActive) sendCallEndedNotice({ peer: record?.peerAlias ?? record?.peer, status, reason, result });
+    if (wasActive) sendCallEndedNotice({ peer: record?.peerAlias ?? record?.peer, status, reason, result, direction: record?.direction });
   });
   client.on('call.unavailable', ({ callId, reason = 'peer_unavailable' }) => {
     finishCallRecord(callId, { status: 'unavailable', reason });
