@@ -42,6 +42,18 @@ function validateUrl(url) {
   }
 }
 
+function describeReason(reason) {
+  return {
+    recipient_dnd: 'recipient is on Do Not Disturb',
+    peer_offline: 'recipient is offline or not connected',
+    self_call: 'cannot call your own relay ID',
+    ring_timeout: 'recipient did not answer in time',
+    call_timeout: 'call ended before an answer arrived',
+    recipient_rejected: 'recipient rejected the call',
+    ended_by_recipient: 'call ended by the recipient',
+  }[reason] ?? reason;
+}
+
 const historyStore = jsonStore(join(profileDir, `${profile}-history.json`));
 
 function persistRecord(record) {
@@ -117,8 +129,8 @@ if (command === 'profiles') {
     const result = await sendDial(controlPath, { action: 'dial', alias: args[0], intent, task });
     if (command === 'ask') {
       if (result.ok) console.log(result.result);
-      else console.error(`Call ${result.status ?? 'failed'}: ${result.reason ?? result.error}`);
-    } else console.log(JSON.stringify({ callId: result.callId, status: result.status, reason: result.reason, result: result.result }));
+      else console.error(`Call ${result.status ?? 'failed'}: ${describeReason(result.reason ?? result.error)}`);
+    } else console.log(JSON.stringify({ callId: result.callId, status: result.status, reason: result.reason, message: result.reason ? describeReason(result.reason) : null, result: result.result }));
     if (!result.ok) process.exitCode = 1;
     process.exit();
   }
@@ -138,7 +150,7 @@ if (command === 'profiles') {
       const outcome = await new Promise((resolve, reject) => {
         const timer = setTimeout(() => { cleanup(); reject(new Error('Call outcome not received')); }, 260_000);
         const onEnd = (event) => { if (event.callId === callId) { cleanup(); resolve(event); } };
-        const onUnavailable = (event) => { if (event.callId === callId) { cleanup(); resolve({ callId, status: 'unavailable', reason: 'peer_unavailable', result: null }); } };
+        const onUnavailable = (event) => { if (event.callId === callId) { cleanup(); resolve({ callId, status: 'unavailable', reason: event.reason ?? 'peer_unavailable', result: null }); } };
         const onClose = () => { cleanup(); reject(new Error('RELAY disconnected during call')); };
         const cleanup = () => {
           clearTimeout(timer);
@@ -152,8 +164,8 @@ if (command === 'profiles') {
       });
       if (command === 'ask') {
         if (outcome.status === 'completed') console.log(outcome.result);
-        else console.error(`Call ${outcome.status}: ${outcome.reason}`);
-      } else console.log(JSON.stringify({ callId, status: outcome.status, reason: outcome.reason, result: outcome.result }));
+        else console.error(`Call ${outcome.status}: ${describeReason(outcome.reason)}`);
+      } else console.log(JSON.stringify({ callId, status: outcome.status, reason: outcome.reason, message: outcome.reason ? describeReason(outcome.reason) : null, result: outcome.result }));
       if (outcome.status !== 'completed') process.exitCode = 1;
       persistRecord({
         callId, direction: 'outgoing', peer: client.contacts.get(args[0]), peerAlias: args[0],
@@ -202,7 +214,7 @@ if (command === 'profiles') {
     return new Promise((resolve) => {
       const timer = setTimeout(() => { cleanup(); resolve({ status: 'ignored', reason: 'no_outcome', result: null }); }, 260_000);
       const onEnd = (event) => { if (event.callId === callId) { cleanup(); resolve({ status: event.status, reason: event.reason, result: event.result }); } };
-      const onUnavailable = (event) => { if (event.callId === callId) { cleanup(); resolve({ status: 'unavailable', reason: 'peer_unavailable', result: null }); } };
+      const onUnavailable = (event) => { if (event.callId === callId) { cleanup(); resolve({ status: 'unavailable', reason: event.reason ?? 'peer_unavailable', result: null }); } };
       const cleanup = () => { clearTimeout(timer); client.off('call.ended', onEnd); client.off('call.unavailable', onUnavailable); };
       client.on('call.ended', onEnd);
       client.on('call.unavailable', onUnavailable);
@@ -322,9 +334,9 @@ if (command === 'profiles') {
     finishCallRecord(callId, { status, reason, result });
     console.log(`Call ${callId} ${status}${result ? `; result: ${result}` : ''}`);
   });
-  client.on('call.unavailable', ({ callId }) => {
-    finishCallRecord(callId, { status: 'unavailable', reason: 'peer_unavailable' });
-    console.log(`Call ${callId}: unavailable`);
+  client.on('call.unavailable', ({ callId, reason = 'peer_unavailable' }) => {
+    finishCallRecord(callId, { status: 'unavailable', reason });
+    console.log(`Call ${callId}: unavailable (${describeReason(reason)})`);
   });
   client.on('presence.updated', ({ dnd }) => console.log(`DND ${dnd ? 'on' : 'off'}`));
   client.on('protocol.error', ({ code, callId }) => console.log(`RELAY error: ${code}${callId ? ` (${callId})` : ''}`));

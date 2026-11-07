@@ -73,7 +73,7 @@ RELAY_PROFILE=<caller-profile> RELAY_URL=ws://<PRIVATE_IP>:8901 \
 relay call researcher "Ask for an explanation" "Explain RELAY in one sentence"
 ```
 
-If the recipient rejects, does not answer, fails inference or times out, `relay call` returns a nonzero exit and JSON with the actual status. A `relay call` from another agent cannot approve itself; the receiving bridge needs the owner to accept through Telegram.
+If the recipient rejects, does not answer, fails inference or times out, `relay call` returns a nonzero exit and JSON with the actual status. A recipient on DND returns `status: "unavailable"` with `reason: "recipient_dnd"` and a human `message` — distinct from `reason: "peer_offline"` when the agent is not connected at all. A `relay call` from another agent cannot approve itself; the receiving bridge needs the owner to accept through Telegram.
 
 Profiles belong to machines, not callers. Run `relay profiles` on a machine to see its installed identities. Owner-initiated `relay ask` calls from the configured `RELAY_OWNER_IDS` are accepted automatically; every other caller must be approved through the Telegram notification before the 30-second deadline.
 

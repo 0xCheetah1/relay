@@ -60,7 +60,14 @@ test('unanswered calls expire, and DND makes the recipient unavailable', async (
   await updated;
   const unavailable = next(env.alice, 'call.unavailable');
   env.alice.dial('bob', { intent: 'Research', task: 'Summarize a document' });
-  assert.equal((await unavailable).type, 'call.unavailable');
+  const dndEvent = await unavailable;
+  assert.equal(dndEvent.type, 'call.unavailable');
+  assert.equal(dndEvent.reason, 'recipient_dnd');
+  await env.bob.close();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const offline = next(env.alice, 'call.unavailable');
+  env.alice.dial('bob', { intent: 'Research', task: 'Summarize a document' });
+  assert.equal((await offline).reason, 'peer_offline');
 });
 
 test('calls have a hard deadline even if the peers keep sending messages', async (t) => {

@@ -39,7 +39,9 @@ export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '12
       }
       if (calls.has(callId)) return send(socket, { type: 'error', code: 'duplicate_call', callId });
       const recipient = peers.get(to);
-      if (!recipient || recipient.dnd || to === id) return send(socket, { type: 'call.unavailable', callId });
+      if (!recipient) return send(socket, { type: 'call.unavailable', callId, reason: 'peer_offline' });
+      if (recipient.dnd) return send(socket, { type: 'call.unavailable', callId, reason: 'recipient_dnd' });
+      if (to === id) return send(socket, { type: 'call.unavailable', callId, reason: 'self_call' });
       const call = { id: callId, from: id, to, state: 'ringing', timer: null };
       calls.set(callId, call);
       call.timer = setTimeout(() => finish(call, 'ignored', 'ring_timeout'), ringMs);
