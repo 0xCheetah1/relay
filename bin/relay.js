@@ -294,10 +294,11 @@ if (command === 'profiles') {
   const closeControl = harness ? await startApprovalSocket(controlPath, async (request) => {
     if (request.action === 'ping') return { ok: true };
     if (request.action === 'accept' || request.action === 'reject') {
+      console.log(`Approval ${request.action} for ${request.callId}`);
       const pendingCall = pending.get(request.callId);
       const entry = notificationCodes.get(request.callId);
-      if (!pendingCall || !entry) return { ok: false, error: 'no_pending_call' };
-      if (entry.attempts++ >= 3 || !sameCode(entry.code, request.code)) return { ok: false, error: 'invalid_code' };
+      if (!pendingCall || !entry) { console.log(`Approval rejected: no pending call ${request.callId}`); return { ok: false, error: 'no_pending_call' }; }
+      if (entry.attempts++ >= 3 || !sameCode(entry.code, request.code)) { console.log(`Approval rejected: invalid code for ${request.callId}`); return { ok: false, error: 'invalid_code' }; }
       if (request.action === 'accept' && !dnd) { acceptCall(request.callId); return { ok: true }; }
       if (request.action === 'reject') { client.reject(request.callId); pending.delete(request.callId); notificationCodes.delete(request.callId); return { ok: true }; }
       return { ok: false, error: 'invalid_decision' };
