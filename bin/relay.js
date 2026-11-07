@@ -3,11 +3,11 @@ import { homedir } from 'node:os';
 import { existsSync, readFileSync, readdirSync, watchFile, unwatchFile } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { invokeHarness } from '../src/adapters.js';
+import { invokeHarness, stripDone } from '../src/adapters.js';
 import { createIdentity } from '../src/identity.js';
 import { RelayClient } from '../src/client.js';
 import { jsonStore } from '../src/store.js';
-import { approvalCode, sameCode, sendDecision, sendDial, sendInlineNotice, sendInlineRing, sendOpenClawNotice, sendOpenClawRing, sendTelegramRing, startApprovalSocket } from '../src/notifications.js';
+import { approvalCode, sameCode, sendControl, sendDecision, sendDial, sendInlineNotice, sendInlineRing, sendOpenClawNotice, sendOpenClawRing, sendTelegramRing, startApprovalSocket } from '../src/notifications.js';
 
 const profileDir = process.env.RELAY_HOME ?? join(homedir(), '.config', 'relay');
 const profile = process.env.RELAY_PROFILE ?? (profiles().length === 1 ? profiles()[0] : 'default');
@@ -50,6 +50,7 @@ function describeReason(reason) {
     self_call: 'cannot call your own relay ID',
     ring_timeout: 'recipient did not answer in time',
     call_timeout: 'call ended before an answer arrived',
+    wait_timeout: 'timed out waiting for the next turn',
     recipient_rejected: 'recipient rejected the call',
     ended_by_recipient: 'call ended by the recipient',
   }[reason] ?? reason;
@@ -138,18 +139,44 @@ if (command === 'profiles') {
   const record = list.find((x) => x.callId === args[1] || x.callId.startsWith(args[1]));
   if (!record) throw new Error(`No call matching ${args[1]}`);
   console.log(JSON.stringify(record, null, 2));
+} else if (['wait', 'reply', 'end'].includes(command)) {
+  state();
+  const controlPath = join(profileDir, `${profile}.sock`);
+  if (!existsSync(controlPath)) throw new Error('No running bridge on this machine; start `relay bridge <harness>` first');
+  if (command === 'wait' && args.length !== 1) throw new Error('Usage: relay wait <callId>');
+  if (command === 'reply' && args.length !== 2) throw new Error('Usage: relay reply <callId> <text>');
+  if (command === 'end' && (args.length < 1 || args.length > 2)) throw new Error('Usage: relay end <callId> [result]');
+  const request = command === 'wait' ? { action: 'wait', callId: args[0] }
+    : command === 'reply' ? { action: 'reply', callId: args[0], text: args[1] }
+      : { action: 'end', callId: args[0], result: args[1] ?? null };
+  const result = await sendControl(controlPath, request);
+  if (command === 'end') {
+    if (!result.ok) { console.error(`End failed: ${result.error}`); process.exitCode = 1; }
+    else console.log('Call ended');
+  } else {
+    console.log(JSON.stringify({ callId: args[0], status: result.status, reason: result.reason ?? null,
+      message: result.reason ? describeReason(result.reason) : null, result: result.result ?? null }));
+    if (!result.ok) process.exitCode = 1;
+  }
 } else if (command === 'connect' || command === 'dial' || command === 'bridge' || command === 'call' || command === 'ask') {
-  if ((command === 'dial' || command === 'call') && args.length !== 3) throw new Error(`Usage: relay ${command} <alias> <intent> <task>`);
+  const multi = command === 'call' && args[0] === '--multi';
+  if (multi) args.shift();
+  if ((command === 'dial' || command === 'call') && args.length !== 3) throw new Error(`Usage: relay ${command}${multi ? ' --multi' : ''} <alias> <intent> <task>`);
   if (command === 'ask' && args.length !== 2) throw new Error('Usage: relay ask <alias> <question>');
   if (command === 'ask' && !process.stdin.isTTY) throw new Error('relay ask requires your interactive terminal; agent-initiated calls use relay call');
   if (command === 'bridge' && (args.length !== 1 || !['hermes-gateway', 'openclaw'].includes(args[0]))) throw new Error('Usage: relay bridge hermes-gateway|openclaw');
   const harness = command === 'bridge' ? args[0] : null;
   const value = state();
   const controlPath = join(profileDir, `${profile}.sock`);
+  if (multi && !existsSync(controlPath)) throw new Error('relay call --multi requires a running bridge on this machine');
   if ((command === 'call' || command === 'ask') && existsSync(controlPath)) {
     const task = command === 'ask' ? args[1] : args[2];
     const intent = command === 'ask' ? task.slice(0, 160) : args[1];
-    const result = await sendDial(controlPath, { action: 'dial', alias: args[0], intent, task });
+    const result = await sendDial(controlPath, { action: 'dial', alias: args[0], intent, task, multi });
+    if (multi) {
+      console.log(JSON.stringify({ callId: result.callId, status: result.status ?? 'dialing' }));
+      process.exit(result.ok ? 0 : 1);
+    }
     if (command === 'ask') {
       if (result.ok) console.log(result.result);
       else console.error(`Call ${result.status ?? 'failed'}: ${describeReason(result.reason ?? result.error)}`);
@@ -204,6 +231,8 @@ if (command === 'profiles') {
   const approved = new Map();
   const active = new Map();
   const callRecords = new Map();
+  const callSessions = new Map();
+  const acceptedCalls = new Set();
   const missed = [];
   const ownerIds = new Set((process.env.RELAY_OWNER_IDS ?? '').split(',').map((id) => id.trim()).filter(Boolean));
 
@@ -244,6 +273,24 @@ if (command === 'profiles') {
       client.on('call.unavailable', onUnavailable);
     });
   }
+  const callWaiters = new Map();
+  function waitForCallEvent(callId, timeoutMs = 130_000) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => finish({ status: 'timeout', reason: 'wait_timeout', result: null }), timeoutMs);
+      function finish(event) {
+        clearTimeout(timer);
+        const rest = (callWaiters.get(callId) ?? []).filter((waiter) => waiter !== finish);
+        if (rest.length) callWaiters.set(callId, rest); else callWaiters.delete(callId);
+        resolve(event);
+      }
+      callWaiters.set(callId, [...(callWaiters.get(callId) ?? []), finish]);
+    });
+  }
+  function resolveCallWaiters(callId, event) {
+    const waiters = callWaiters.get(callId) ?? [];
+    callWaiters.delete(callId);
+    for (const waiter of waiters) waiter(event);
+  }
   const closeControl = harness ? await startApprovalSocket(controlPath, async (request) => {
     if (request.action === 'ping') return { ok: true };
     if (request.action === 'accept' || request.action === 'reject') {
@@ -261,8 +308,26 @@ if (command === 'profiles') {
       if (typeof intent !== 'string' || !intent.trim() || typeof task !== 'string' || !task.trim()) return { ok: false, error: 'invalid_dial' };
       const callId = client.dial(alias, { intent: intent.slice(0, 160), task: task.slice(0, 2000) });
       startCallRecord(callId, { direction: 'outgoing', peer: client.contacts.get(alias), peerAlias: alias, intent, task });
+      if (request.multi) return { ok: true, callId, status: 'dialing' };
       const outcome = await waitForCallOutcome(client, callId);
       return { ok: outcome.status === 'completed', callId, status: outcome.status, reason: outcome.reason, result: outcome.result };
+    }
+    if (request.action === 'wait') {
+      if (typeof request.callId !== 'string') return { ok: false, error: 'invalid_call_id' };
+      const event = await waitForCallEvent(request.callId);
+      return { ok: event.status === 'active' || event.status === 'completed', callId: request.callId, ...event };
+    }
+    if (request.action === 'reply') {
+      if (typeof request.callId !== 'string' || typeof request.text !== 'string' || !request.text.trim()) return { ok: false, error: 'invalid_reply' };
+      if (!acceptedCalls.has(request.callId)) return { ok: false, error: 'call_not_active' };
+      client.say(request.callId, request.text.slice(0, 4000));
+      const event = await waitForCallEvent(request.callId);
+      return { ok: event.status === 'active' || event.status === 'completed', callId: request.callId, ...event };
+    }
+    if (request.action === 'end') {
+      if (typeof request.callId !== 'string') return { ok: false, error: 'invalid_call_id' };
+      client.end(request.callId, request.result ?? null);
+      return { ok: true };
     }
     return { ok: false, error: 'invalid_request' };
   }) : null;
@@ -365,6 +430,7 @@ if (command === 'profiles') {
   });
   client.on('call.dialing', ({ callId }) => console.log(`Ringing ${callId}`));
   client.on('call.accepted', ({ callId }) => {
+    acceptedCalls.add(callId);
     console.log(`Call connected ${callId}; /say ${callId} <message>`);
     const call = approved.get(callId);
     if (!call) return;
@@ -373,9 +439,28 @@ if (command === 'profiles') {
     console.log(`Call ${callId}: ${trusted ? 'known contact - full context' : 'unknown caller - minimal context'}`);
     const controller = new AbortController();
     active.set(callId, controller);
-    invokeHarness(harness, call, { signal: controller.signal,
+    const session = { call, controller, transcript: [], turns: 0, idle: null, queue: Promise.resolve() };
+    callSessions.set(callId, session);
+    enqueueTurn(callId, session);
+  });
+
+  function enqueueTurn(callId, session) {
+    session.queue = session.queue
+      .then(() => answerTurn(callId, session))
+      .catch((error) => {
+        if (active.get(callId) !== session.controller) return;
+        console.error(`${harness} call failed: ${error.message}`);
+        client.fail(callId);
+      });
+  }
+
+  async function answerTurn(callId, session) {
+    if (active.get(callId) !== session.controller) return;
+    clearTimeout(session.idle);
+    const answer = await invokeHarness(harness, { ...session.call, transcript: session.transcript }, {
+      signal: session.controller.signal,
       timeoutMs: Number(process.env.RELAY_HARNESS_TIMEOUT_MS ?? '110000'),
-      policy: trusted ? 'full' : 'limited',
+      policy: ownerIds.has(session.call.from) || aliases.has(session.call.from) ? 'full' : 'limited',
       command: harness === 'openclaw' ? process.env.RELAY_OPENCLAW_BIN : process.env.RELAY_HERMES_BIN,
       config: process.env.RELAY_OPENCLAW_CONFIG, cwd: process.env.RELAY_OPENCLAW_CWD,
       stateDir: process.env.RELAY_OPENCLAW_STATE_DIR,
@@ -386,35 +471,80 @@ if (command === 'profiles') {
         ownerName: process.env.RELAY_OWNER_NAME,
         role: process.env.RELAY_AGENT_ROLE,
       },
-    }).then((answer) => {
-      if (active.get(callId) === controller) client.end(callId, answer.slice(0, 4000));
-    }).catch((error) => {
-      if (active.get(callId) === controller) {
-        console.error(`${harness} call failed: ${error.message}`);
-        client.fail(callId);
-      }
     });
-  });
+    if (active.get(callId) !== session.controller) return;
+    const { text, done } = stripDone(answer);
+    session.transcript.push({ from: 'me', text });
+    session.turns += 1;
+    const record = callRecords.get(callId);
+    if (record) record.turns.push({ from: 'me', text, at: new Date().toISOString() });
+    const maxTurns = Math.max(1, Number(process.env.RELAY_MAX_TURNS ?? '8'));
+    const idleMs = Math.max(1000, Number(process.env.RELAY_TURN_IDLE_MS ?? '20000'));
+    if (done || session.turns >= maxTurns) {
+      client.end(callId, text.slice(0, 4000));
+    } else {
+      client.say(callId, text.slice(0, 4000));
+      session.idle = setTimeout(() => {
+        if (active.get(callId) === session.controller) client.end(callId, text.slice(0, 4000));
+      }, idleMs);
+      session.idle.unref?.();
+    }
+  }
+
+  async function sendCallEndedNotice({ peer, status, reason, result }) {
+    const lines = [`📴 Call ended${peer ? ` — ${peer}` : ''}`, `Status: ${status}${reason ? ` (${describeReason(reason)})` : ''}`];
+    if (result) lines.push(`Result: ${String(result).slice(0, 300)}`);
+    const text = lines.join('\n');
+    try {
+      if (harness === 'openclaw') {
+        await sendOpenClawNotice({ bin: process.env.RELAY_OPENCLAW_BIN,
+          ownerId: process.env.RELAY_OPENCLAW_TELEGRAM_OWNER, text, silent: true });
+      } else if (harness === 'hermes-gateway' && process.env.RELAY_HERMES_TELEGRAM_SOCKET) {
+        await sendInlineNotice(process.env.RELAY_HERMES_TELEGRAM_SOCKET, text, { silent: true });
+      }
+    } catch (error) {
+      console.error(`Call-ended notice not sent: ${error.message}`);
+    }
+  }
   client.on('call.message', ({ callId, from, text }) => {
     const record = callRecords.get(callId);
     if (record) record.turns.push({ from: from === value.identity.id ? 'me' : 'peer', text, at: new Date().toISOString() });
     console.log(`\n${aliases.get(from) ?? from} [${callId}]: ${text}`);
+    const session = callSessions.get(callId);
+    if (session && from !== value.identity.id) {
+      clearTimeout(session.idle);
+      session.transcript.push({ from: 'peer', text });
+      enqueueTurn(callId, session);
+    }
+    resolveCallWaiters(callId, { status: 'active', result: text });
   });
   client.on('call.ended', ({ callId, status, reason, result }) => {
+    const record = callRecords.get(callId);
+    const wasActive = acceptedCalls.has(callId);
+    acceptedCalls.delete(callId);
+    const session = callSessions.get(callId);
+    if (session) clearTimeout(session.idle);
+    callSessions.delete(callId);
     pending.delete(callId);
     notificationCodes.delete(callId);
     approved.delete(callId);
     active.get(callId)?.abort();
     active.delete(callId);
     finishCallRecord(callId, { status, reason, result });
+    resolveCallWaiters(callId, { status, reason, result });
     console.log(`Call ${callId} ${status}${result ? `; result: ${result}` : ''}`);
+    if (wasActive) sendCallEndedNotice({ peer: record?.peerAlias ?? record?.peer, status, reason, result });
   });
   client.on('call.unavailable', ({ callId, reason = 'peer_unavailable' }) => {
     finishCallRecord(callId, { status: 'unavailable', reason });
+    resolveCallWaiters(callId, { status: 'unavailable', reason, result: null });
     console.log(`Call ${callId}: unavailable (${describeReason(reason)})`);
   });
   client.on('presence.updated', ({ dnd }) => console.log(`DND ${dnd ? 'on' : 'off'}`));
-  client.on('protocol.error', ({ code, callId }) => console.log(`RELAY error: ${code}${callId ? ` (${callId})` : ''}`));
+  client.on('protocol.error', ({ code, callId }) => {
+    console.log(`RELAY error: ${code}${callId ? ` (${callId})` : ''}`);
+    if (callId) resolveCallWaiters(callId, { status: 'error', reason: code, result: null });
+  });
   client.on('connection.closed', () => console.log('Disconnected from RELAY'));
   if (command === 'dial') {
     const callId = client.dial(args[0], { intent: args[1], task: args[2] });
@@ -465,6 +595,6 @@ if (command === 'profiles') {
   for (const controller of unfinished) controller.abort();
   await client.close();
 } else {
-  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call <alias> <intent> <task> | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
+  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call [--multi] <alias> <intent> <task> | wait <call-id> | reply <call-id> <text> | end <call-id> [result] | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
   if (command) process.exitCode = 1;
 }

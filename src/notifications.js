@@ -47,6 +47,8 @@ export const sendDecision = (path, request) => socketRequest(path, request);
 
 export const sendDial = (path, request) => socketRequest(path, request, { timeoutMs: 270_000 });
 
+export const sendControl = (path, request) => socketRequest(path, request, { timeoutMs: 140_000 });
+
 export function sendOpenClawRing({ bin, ownerId, call, alias, code, trusted = true }) {
   const text = `📞 Incoming RELAY call\n\nFrom: ${alias}${trusted ? '' : '\n⚠️ Unknown caller — not in your phonebook'}\nIntent: ${call.intent}\n\n📋 Task\n${call.task}\n\n${trusted ? 'Answers use full context.' : 'Accepting answers with minimal context only.'}\n⏳ Answer within 2 minutes.`;
   const presentation = {
@@ -74,10 +76,12 @@ export function sendOpenClawRing({ bin, ownerId, call, alias, code, trusted = tr
   });
 }
 
-export function sendOpenClawNotice({ bin, ownerId, text }) {
+export function sendOpenClawNotice({ bin, ownerId, text, silent = false }) {
+  const args = ['message', 'send', '--channel', 'telegram', '--target', String(ownerId), '--message', text];
+  if (silent) args.push('--silent');
+  args.push('--json');
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, ['message', 'send', '--channel', 'telegram', '--target', String(ownerId), '--message', text, '--json'],
-      { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     let err = '';
     child.stdout.on('data', (chunk) => { out += chunk; });
@@ -96,8 +100,8 @@ export async function sendInlineRing(path, { call, alias, code, trusted = true }
   if (result.status !== 'delivered') throw new Error('Hermes Telegram button delivery failed');
 }
 
-export async function sendInlineNotice(path, text) {
-  const result = await socketRequest(path, { action: 'notice', text });
+export async function sendInlineNotice(path, text, { silent = false } = {}) {
+  const result = await socketRequest(path, { action: 'notice', text, silent });
   if (result.status !== 'delivered') throw new Error('Hermes Telegram notice delivery failed');
 }
 

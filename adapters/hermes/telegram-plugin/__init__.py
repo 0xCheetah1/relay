@@ -113,7 +113,8 @@ def register(ctx):
                     owner = _owner_chat_id()
                     if call.get("action") == "notice":
                         text = html.escape(str(call.get("text", ""))[:3500])
-                        await application.bot.send_message(chat_id=owner, text=text, parse_mode="HTML")
+                        await application.bot.send_message(chat_id=owner, text=text, parse_mode="HTML",
+                                                          disable_notification=bool(call.get("silent", False)))
                         writer.write(b'{"status":"delivered"}\n')
                         return
                     call_id, code = call["callId"], call["code"]

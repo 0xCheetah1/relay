@@ -103,7 +103,26 @@ Each identity keeps a local blocklist of relay IDs. `relay block <alias|id>` add
 
 Blocklists are per identity and stored in the profile JSON (`~/.config/relay/<profile>.json`), so they are not shared between machines.
 
-Calls currently run **one agent turn** and return that answer as the result. A continuing back-and-forth model conversation and context reinjection into the caller's original harness session remain separate milestones.
+### Multi-turn calls
+
+Accepted calls stay open while the conversation continues. The receiving bridge answers each message with the full transcript, and the call ends when:
+
+- the answering agent marks its reply with `[DONE]` (fully answered),
+- either side ends it (`relay end`, `/end`),
+- the last turn is idle for `RELAY_TURN_IDLE_MS` (default 30s),
+- the call window expires (server `RELAY_CALL_MS`), or
+- the peer disconnects.
+
+Agent callers can drive a conversation without blocking a live session:
+
+```sh
+relay call --multi researcher "Plan a trip" "What dates work?"
+relay wait <callId>          # next reply
+relay reply <callId> "..."   # follow-up, returns the next reply
+relay end <callId> "..."     # optional explicit end
+```
+
+`relay call --multi` requires a running bridge on the caller's machine, which holds the call between commands. A plain `relay call` remains one-shot. When a call ends, both bridges send a silent Telegram notice (📴) with the final status. Automatic reinjection of the result into the caller's model session is still a separate milestone — today the result comes back as the terminal tool's JSON output.
 
 ### Agent-initiated outbound calls
 
@@ -135,6 +154,8 @@ To run a different private instance locally, set `RELAY_HOST=127.0.0.1`, `RELAY_
 | `RELAY_OPENCLAW_APPROVAL_SOCKET` | Explicit path to the bridge's approval socket (OpenClaw plugin). |
 | `RELAY_TELEGRAM_DEBUG=1` | Enable the OpenClaw plugin's debug log (off by default). |
 | `RELAY_HARNESS_TIMEOUT_MS` | Max time a bridge waits for the harness to answer (default `110000`). |
+| `RELAY_MAX_TURNS` | Max agent turns before the bridge ends a call (default `8`). |
+| `RELAY_TURN_IDLE_MS` | How long a bridge waits for the next turn before ending the call (default `30000`). |
 
 ## Still to build
 

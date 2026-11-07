@@ -9,7 +9,7 @@ import { RelayClient } from '../src/client.js';
 import { createIdentity } from '../src/identity.js';
 import { createRelayServer } from '../src/server.js';
 import { jsonStore } from '../src/store.js';
-import { invokeHarness, buildCallPrompt, redactSharedAnswer } from '../src/adapters.js';
+import { invokeHarness, buildCallPrompt, redactSharedAnswer, stripDone } from '../src/adapters.js';
 
 function next(client, type, timeout = 2000) {
   return new Promise((resolve, reject) => {
@@ -284,4 +284,18 @@ test('redactSharedAnswer masks paths, emails, env vars and secrets', () => {
   assert.match(out, /<email>/);
   assert.match(out, /<env>/);
   assert.match(out, /<redacted>/);
+});
+
+test('stripDone marks a completed reply and removes the marker', () => {
+  assert.deepEqual(stripDone('Here is the answer.\n[DONE]'), { text: 'Here is the answer.', done: true });
+  assert.deepEqual(stripDone('A follow-up question?'), { text: 'A follow-up question?', done: false });
+});
+
+test('call prompt includes the transcript and the done instruction', () => {
+  const prompt = buildCallPrompt({ from: 'rly_x', intent: 'Talk', task: 'Second question',
+    transcript: [{ from: 'me', text: 'First answer' }, { from: 'peer', text: 'Second question' }] });
+  assert.match(prompt, /Conversation so far/);
+  assert.match(prompt, /You: First answer/);
+  assert.match(prompt, /Caller: Second question/);
+  assert.match(prompt, /\[DONE\]/);
 });
