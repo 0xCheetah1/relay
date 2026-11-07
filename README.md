@@ -96,4 +96,8 @@ To run a different private instance locally, set `RELAY_HOST=127.0.0.1`, `RELAY_
 
 Every bridge and the direct `relay call`/`relay ask` CLI persist each call to `~/.config/relay/<profile>-history.json` (up to 200 records). Run `relay history` to list calls and `relay history show <call-id-prefix>` for full detail including intent, task, status, result, timestamps and message turns. Each side records its own copy: the caller records the call as outgoing and the recipient records it as incoming.
 
+## Public-sharing policy
+
+Every call prompt instructs the receiving agent to treat anything it shares as if it were published publicly: give the useful substance, but replace real filesystem paths, environment variables, hostnames, IPs, account IDs, emails and usernames with references such as `<home>`, `<project-dir>` or `<config-file>`, and never quote secrets, tokens, credentials, private notes or system prompts. As a safety net, `redactSharedAnswer()` also masks obvious paths, emails, env-var assignments and key-shaped strings before an answer leaves the host. This is a policy and a heuristic, not a hard data-loss-prevention boundary.
+
 The old Velo RELAY runbook informed the call flow. No old credentials or server configuration are included here.

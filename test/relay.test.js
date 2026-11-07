@@ -9,7 +9,7 @@ import { RelayClient } from '../src/client.js';
 import { createIdentity } from '../src/identity.js';
 import { createRelayServer } from '../src/server.js';
 import { jsonStore } from '../src/store.js';
-import { invokeHarness } from '../src/adapters.js';
+import { invokeHarness, buildCallPrompt, redactSharedAnswer } from '../src/adapters.js';
 
 function next(client, type, timeout = 2000) {
   return new Promise((resolve, reject) => {
@@ -207,4 +207,26 @@ test('noninteractive call returns the recipient result as JSON', async (t) => {
   const code = await new Promise((resolve) => child.once('close', resolve));
   assert.equal(code, 0, stderr);
   assert.equal(JSON.parse(stdout).result, 'Call received.');
+});
+
+test('call prompt requires treating shared info as public', () => {
+  const prompt = buildCallPrompt({ from: 'rly_x', intent: 'Review', task: 'What is the config?' });
+  assert.match(prompt, /PUBLIC-SHARING POLICY/);
+  assert.match(prompt, /published publicly/i);
+  assert.match(prompt, /Replace real filesystem paths/i);
+  assert.match(prompt, /environment variables/i);
+});
+
+test('redactSharedAnswer masks paths, emails, env vars and secrets', () => {
+  const input = 'Config at /home/velo/secret/project/.env, contact ada@example.com, DB_PASSWORD=hunter2, key sk_live_abcdefghijklmnop1234, hash 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  const out = redactSharedAnswer(input);
+  assert.doesNotMatch(out, /\/home\/velo/);
+  assert.doesNotMatch(out, /ada@example\.com/);
+  assert.doesNotMatch(out, /hunter2/);
+  assert.doesNotMatch(out, /sk_live_/);
+  assert.doesNotMatch(out, /0123456789abcdef0123456789abcdef/);
+  assert.match(out, /<path>/);
+  assert.match(out, /<email>/);
+  assert.match(out, /<env>/);
+  assert.match(out, /<redacted>/);
 });
