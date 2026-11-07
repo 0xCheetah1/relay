@@ -5,3 +5,5 @@ node_modules/
 relay-identities.json
 deploy/*.service
 *.sock
+__pycache__/
+*.pyc
