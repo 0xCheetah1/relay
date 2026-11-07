@@ -152,7 +152,16 @@ export async function invokeHarness(kind, call, { timeoutMs = 45_000, signal, co
       || settings.tools?.allow || settings.tools?.alsoAllow || settings.tools?.byProvider || settings.agents?.entries?.length) {
       throw new Error(`OpenClaw call config must use tools.profile=minimal and contextInjection=${expectedInjection} without expanded grants or agent entries`);
     }
-    output = await run(command ?? 'openclaw', ['agent', 'exec', '--config', activeConfig, '--cwd', activeCwd, '--timeout', String(Math.max(1, Math.floor(timeoutMs / 1000))), '--message-file', '-', '--json'], prompt, timeoutMs, signal,
+    const args = ['agent', 'exec', '--config', activeConfig, '--cwd', activeCwd,
+      '--timeout', String(Math.max(1, Math.floor(timeoutMs / 1000))), '--message-file', '-', '--json'];
+    const fallbacks = (process.env.RELAY_OPENCLAW_FALLBACKS ?? '').split(',').map((item) => item.trim()).filter(Boolean);
+    if (fallbacks.length) {
+      const configured = settings.agents?.defaults?.model;
+      const primary = typeof configured === 'string' ? configured : configured?.primary;
+      if (primary) args.push('--model', primary);
+      for (const fallback of fallbacks) args.push('--fallback', fallback);
+    }
+    output = await run(command ?? 'openclaw', args, prompt, timeoutMs, signal,
       { ...process.env, OPENCLAW_STATE_DIR: stateDir });
     let result;
     try { result = JSON.parse(output); } catch { throw new Error('OpenClaw returned invalid JSON'); }

@@ -14,6 +14,7 @@ Environment=RELAY_OPENCLAW_CWD=<openclaw-workspace-directory>
 Environment=RELAY_OPENCLAW_UNKNOWN_CONFIG=<path-to-limited-openclaw-config-json>
 Environment=RELAY_OPENCLAW_UNKNOWN_CWD=<dedicated-empty-directory>
 Environment=RELAY_OPENCLAW_STATE_DIR=<separate-openclaw-state-directory>
+Environment=RELAY_OPENCLAW_FALLBACKS=<comma-separated-fallback-models>
 Environment=RELAY_OPENCLAW_TELEGRAM_OWNER=<OWNER_TELEGRAM_ID>
 Environment=RELAY_AGENT_NAME=<agent-name>
 Environment=RELAY_OWNER_NAME=<owner-name>
