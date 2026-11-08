@@ -417,7 +417,7 @@ if (command === 'profiles') {
   }
   const closeAttach = harness ? await startAttachServer(`${controlPath}.attach`, {
     onOpen: (callId, socket) => {
-      if (!acceptedCalls.has(callId) && !callSessions.has(callId)) return false;
+      if (!acceptedCalls.has(callId) && !callSessions.has(callId) && !callRecords.has(callId)) return false;
       const set = attachers.get(callId) ?? new Set();
       set.add(socket);
       attachers.set(callId, set);
