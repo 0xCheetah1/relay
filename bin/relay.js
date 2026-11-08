@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { homedir } from 'node:os';
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, watchFile, unwatchFile, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, watchFile, unwatchFile, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { createConnection } from 'node:net';
@@ -72,19 +72,69 @@ function describeReason(reason) {
 
 const historyStore = jsonStore(join(profileDir, `${profile}-history.json`));
 
+function safeName(value) {
+  return String(value ?? 'unknown').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 64) || 'unknown';
+}
+
+function parseDuration(input) {
+  if (/^(forever|off|never|0)$/i.test(input ?? '')) return 0;
+  const match = /^(\d+)\s*(s|m|h|d|w)?$/i.exec(input ?? '');
+  if (!match) throw new Error('Duration must look like 30m, 12h, 7d, or forever');
+  return Number(match[1]) * ({ s: 1, m: 60, h: 3600, d: 86400, w: 604800 }[(match[2] ?? 's').toLowerCase()]);
+}
+
+function retentionSeconds(peerId) {
+  const value = store.load();
+  const configured = value.retention?.[peerId];
+  return Number.isFinite(configured) ? Math.max(0, configured) : 86400;
+}
+
+function prunePeer(peerId, label) {
+  const seconds = retentionSeconds(peerId);
+  if (seconds === 0) return;
+  const cutoff = Date.now() - seconds * 1000;
+  const history = historyStore.load();
+  const records = Array.isArray(history.records) ? history.records : [];
+  const kept = records.filter((record) => record.peer !== peerId
+    || Date.parse(record.endedAt ?? record.startedAt ?? 0) >= cutoff);
+  if (kept.length !== records.length) {
+    history.records = kept;
+    historyStore.save(history);
+  }
+  const dir = join(profileDir, 'transcripts', safeName(label));
+  if (!existsSync(dir)) return;
+  for (const name of readdirSync(dir)) {
+    const file = join(dir, name);
+    try { if (statSync(file).mtimeMs < cutoff) unlinkSync(file); } catch {}
+  }
+}
+
+function pruneAll() {
+  let value;
+  try { value = store.load(); } catch { return; }
+  if (!value.identity) return;
+  const history = historyStore.load();
+  const records = Array.isArray(history.records) ? history.records : [];
+  const byId = new Map(Object.entries(value.contacts ?? {}).map(([alias, id]) => [id, alias]));
+  const peers = new Set(records.map((record) => record.peer).filter(Boolean));
+  for (const peerId of peers) prunePeer(peerId, byId.get(peerId) ?? peerId);
+}
+
 function persistRecord(record) {
   const history = historyStore.load();
   const list = Array.isArray(history.records) ? history.records : [];
   list.unshift(record);
   history.records = list.slice(0, 200);
   historyStore.save(history);
+  const label = record.peerAlias ?? record.peer ?? 'unknown';
   try {
-    const dir = join(profileDir, 'transcripts');
+    const dir = join(profileDir, 'transcripts', safeName(label));
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     writeFileSync(join(dir, `${record.callId}.md`), formatTranscript(record), { mode: 0o600 });
   } catch (error) {
     console.error(`Could not save transcript: ${error.message}`);
   }
+  if (record.peer) prunePeer(record.peer, label);
 }
 
 if (command === 'profiles') {
@@ -146,6 +196,7 @@ if (command === 'profiles') {
   for (const [alias, id] of Object.entries(state().contacts ?? {})) console.log(`${alias}\t${id}`);
 } else if (command === 'history' && args.length === 0) {
   state();
+  pruneAll();
   const list = Array.isArray(historyStore.load().records) ? historyStore.load().records : [];
   if (list.length === 0) { console.log('No calls recorded yet.'); }
   else for (const r of list) {
@@ -154,8 +205,26 @@ if (command === 'profiles') {
     const who = r.peerAlias ?? r.peer ?? '?';
     console.log(`${when}  ${dir} ${who}  ${r.status}${r.result ? `  ${String(r.result).slice(0, 60)}` : ''}  (${r.callId.slice(0, 8)})`);
   }
+} else if (command === 'retention') {
+  const value = state();
+  if (args.length === 0 || args[0] === 'list') {
+    const byId = new Map(Object.entries(value.contacts ?? {}).map(([alias, id]) => [id, alias]));
+    const entries = Object.entries(value.retention ?? {});
+    if (entries.length === 0) console.log('Default retention: 24h. Use relay retention <alias|id> <30m|12h|7d|forever>.');
+    else for (const [id, seconds] of entries) console.log(`${byId.get(id) ?? id}\t${seconds === 0 ? 'forever' : `${seconds}s`}`);
+  } else if (args.length === 2) {
+    const id = args[0].startsWith('rly_') ? args[0] : value.contacts?.[args[0]];
+    if (!id) throw new Error('Unknown alias or invalid relay ID');
+    const seconds = parseDuration(args[1]);
+    value.retention = { ...(value.retention ?? {}), [id]: seconds };
+    store.save(value);
+    console.log(`Retention for ${args[0] === id ? id : `${args[0]} (${id})`}: ${seconds === 0 ? 'forever' : `${seconds}s`}`);
+  } else {
+    throw new Error('Usage: relay retention [list | <alias|id> <30m|12h|7d|forever>]');
+  }
 } else if (command === 'export' && args.length >= 1) {
   state();
+  pruneAll();
   const list = Array.isArray(historyStore.load().records) ? historyStore.load().records : [];
   const record = list.find((item) => item.callId === args[0] || item.callId.startsWith(args[0]));
   if (!record) throw new Error(`No call matching ${args[0]}`);
@@ -171,12 +240,21 @@ if (command === 'profiles') {
   }
 } else if (command === 'transcripts' && args.length === 0) {
   state();
-  const dir = join(profileDir, 'transcripts');
-  if (!existsSync(dir)) console.log('No transcripts saved yet.');
+  pruneAll();
+  const root = join(profileDir, 'transcripts');
+  if (!existsSync(root)) console.log('No transcripts saved yet.');
   else {
-    const names = readdirSync(dir).filter((name) => name.endsWith('.md')).sort().reverse().slice(0, 50);
-    if (names.length === 0) console.log('No transcripts saved yet.');
-    else for (const name of names) console.log(name.slice(0, -3));
+    let found = false;
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        const files = readdirSync(join(root, entry.name)).filter((name) => name.endsWith('.md')).sort().reverse();
+        if (files.length) { found = true; console.log(`${entry.name}/ (${files.length})`); }
+      } else if (entry.name.endsWith('.md')) {
+        found = true;
+        console.log(`${entry.name.slice(0, -3)} (legacy)`);
+      }
+    }
+    if (!found) console.log('No transcripts saved yet.');
   }
 } else if (command === 'history' && args[0] === 'show' && args.length === 2) {
   state();
@@ -757,6 +835,6 @@ if (command === 'profiles') {
   for (const controller of unfinished) controller.abort();
   await client.close();
 } else {
-  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call [--multi] <alias> <intent> <task> | attach <call-id> | export <call-id> [--out <file>] | transcripts | wait <call-id> | reply <call-id> <text> | end <call-id> [result] | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
+  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call [--multi] <alias> <intent> <task> | attach <call-id> | export <call-id> [--out <file>] | transcripts | retention [list | <alias|id> <30m|12h|7d|forever>] | wait <call-id> | reply <call-id> <text> | end <call-id> [result] | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
   if (command) process.exitCode = 1;
 }
