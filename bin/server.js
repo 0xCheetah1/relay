@@ -9,7 +9,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('RELAY_
 const ringMs = Number(process.env.RELAY_RING_MS ?? '30000');
 const callMs = Number(process.env.RELAY_CALL_MS ?? '60000');
 if (!Number.isInteger(ringMs) || ringMs < 1000) throw new Error('RELAY_RING_MS must be an integer >= 1000');
-if (!Number.isInteger(callMs) || callMs < 1000) throw new Error('RELAY_CALL_MS must be an integer >= 1000');
+if (!Number.isInteger(callMs) || callMs < 0) throw new Error('RELAY_CALL_MS must be an integer >= 0 (0 disables the call timeout)');
 const path = resolve(process.env.RELAY_IDENTITY_DB ?? './relay-identities.json');
 const server = createRelayServer({ host, port, identityStore: jsonStore(path), ringMs, callMs });
 console.log(`RELAY listening on ${await server.listen()}; identity pins: ${path}`);

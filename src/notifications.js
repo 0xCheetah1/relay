@@ -130,8 +130,7 @@ export async function sendInlineNotice(path, text, { silent = false, buttons = n
   if (result.status !== 'delivered') throw new Error('Hermes Telegram notice delivery failed');
 }
 
-export async function startApprovalSocket(path, decide) {
-  if (existsSync(path)) {
+export async function startApprovalSocket(path, decide) {  if (existsSync(path)) {
     if (!lstatSync(path).isSocket()) throw new Error('Approval path exists and is not a socket');
     try { await socketRequest(path, { action: 'ping' }); throw new Error('Approval socket already in use'); }
     catch (error) {
@@ -153,6 +152,49 @@ export async function startApprovalSocket(path, decide) {
         (result) => socket.end(`${JSON.stringify(result)}\n`),
         (error) => socket.end(`${JSON.stringify({ ok: false, error: error?.message ?? 'control_error' })}\n`),
       );
+    });
+  });
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(path, resolve); });
+  chmodSync(path, 0o600);
+  return async () => {
+    await new Promise((resolve) => server.close(resolve));
+    if (existsSync(path)) unlinkSync(path);
+  };
+}
+
+export async function startAttachServer(path, { onOpen, onSay, onEnd }) {
+  if (existsSync(path)) {
+    if (!lstatSync(path).isSocket()) throw new Error('Attach path exists and is not a socket');
+    unlinkSync(path);
+  }
+  const server = createServer((socket) => {
+    let buffer = '';
+    let callId = null;
+    const send = (event) => socket.write(`${JSON.stringify(event)}\n`);
+    socket.on('error', () => {});
+    socket.on('data', (chunk) => {
+      buffer += chunk;
+      if (buffer.length > 65536) return socket.destroy();
+      let index;
+      while ((index = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, index);
+        buffer = buffer.slice(index + 1);
+        let message;
+        try { message = JSON.parse(line); } catch { send({ type: 'error', error: 'invalid_json' }); continue; }
+        if (!callId) {
+          if (message.type !== 'attach' || typeof message.callId !== 'string' || !/^[0-9a-f-]{36}$/.test(message.callId)) {
+            send({ type: 'error', error: 'attach_required' }); socket.end(); return;
+          }
+          if (!onOpen(message.callId, socket)) { send({ type: 'error', error: 'no_call' }); socket.end(); return; }
+          callId = message.callId;
+          send({ type: 'attached', callId });
+          continue;
+        }
+        if (message.type === 'say' && typeof message.text === 'string' && message.text.trim()) onSay(callId, message.text.slice(0, 4000));
+        else if (message.type === 'end') onEnd(callId, message.result ?? null);
+        else if (message.type === 'close') socket.end();
+        else send({ type: 'error', error: 'invalid_message' });
+      }
     });
   });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(path, resolve); });

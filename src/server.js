@@ -67,7 +67,7 @@ export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '12
       if (message.type === 'call.reject') return finish(call, 'rejected', 'recipient_rejected');
       clearTimeout(call.timer);
       call.state = 'active';
-      call.timer = setTimeout(() => finish(call, 'timeout', 'call_timeout'), callMs);
+      if (callMs > 0) call.timer = setTimeout(() => finish(call, 'timeout', 'call_timeout'), callMs);
       const event = { type: 'call.accepted', callId: call.id, from: call.from, to: call.to, deadline: Date.now() + callMs };
       send(peers.get(call.from)?.socket, event);
       return send(socket, event);

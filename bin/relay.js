@@ -3,11 +3,12 @@ import { homedir } from 'node:os';
 import { existsSync, readFileSync, readdirSync, watchFile, unwatchFile } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { createConnection } from 'node:net';
 import { extractReport, invokeHarness, stripDone } from '../src/adapters.js';
 import { createIdentity } from '../src/identity.js';
 import { RelayClient } from '../src/client.js';
 import { jsonStore } from '../src/store.js';
-import { approvalCode, sameCode, sendControl, sendDecision, sendDial, sendInlineNotice, sendInlineRing, sendOpenClawNotice, sendOpenClawRing, sendTelegramRing, startApprovalSocket } from '../src/notifications.js';
+import { approvalCode, sameCode, sendControl, sendDecision, sendDial, sendInlineNotice, sendInlineRing, sendOpenClawNotice, sendOpenClawRing, sendTelegramRing, startApprovalSocket, startAttachServer } from '../src/notifications.js';
 
 const profileDir = process.env.RELAY_HOME ?? join(homedir(), '.config', 'relay');
 const profile = process.env.RELAY_PROFILE ?? (profiles().length === 1 ? profiles()[0] : 'default');
@@ -151,6 +152,51 @@ if (command === 'profiles') {
   const record = list.find((x) => x.callId === args[1] || x.callId.startsWith(args[1]));
   if (!record) throw new Error(`No call matching ${args[1]}`);
   console.log(JSON.stringify(record, null, 2));
+} else if (command === 'attach' && args.length === 1) {
+  const me = state().identity.id;
+  const attachPath = join(profileDir, `${profile}.attach.sock`);
+  if (!existsSync(attachPath)) throw new Error('No running bridge on this machine; start `relay bridge <harness>` first');
+  const input = createInterface({ input: process.stdin, output: process.stdout, terminal: process.stdin.isTTY });
+  const socket = createConnection(attachPath);
+  let closed = false;
+  const done = () => {
+    if (closed) return;
+    closed = true;
+    try { socket.end(); } catch {}
+    input.close();
+  };
+  socket.on('connect', () => socket.write(`${JSON.stringify({ type: 'attach', callId: args[0] })}\n`));
+  socket.on('error', (error) => { console.error(`Attach failed: ${error.message}`); process.exitCode = 1; done(); });
+  let buffer = '';
+  socket.on('data', (chunk) => {
+    buffer += chunk;
+    let index;
+    while ((index = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, index);
+      buffer = buffer.slice(index + 1);
+      let event;
+      try { event = JSON.parse(line); } catch { continue; }
+      if (event.type === 'attached') console.log(`Attached to ${event.callId}. Type a message, /end [result], or /quit.`);
+      else if (event.type === 'message') console.log(`\n${event.from === me ? 'you' : 'peer'}: ${event.text}`);
+      else if (event.type === 'ended') {
+        console.log(`\nCall ended: ${event.status}${event.reason ? ` (${event.reason})` : ''}${event.result ? ` - ${event.result}` : ''}`);
+        done();
+      } else if (event.type === 'error') console.error(`Attach error: ${event.error}`);
+    }
+  });
+  socket.on('close', () => { closed = true; input.close(); });
+  for await (const line of input) {
+    if (closed) break;
+    if (line === '/quit') { socket.write('{"type":"close"}\n'); break; }
+    if (line.startsWith('/end')) {
+      const result = line.slice(4).trim() || null;
+      socket.write(`${JSON.stringify({ type: 'end', result })}\n`);
+      break;
+    }
+    if (line.trim()) socket.write(`${JSON.stringify({ type: 'say', text: line })}\n`);
+  }
+  if (!closed) { socket.write('{"type":"close"}\n'); socket.end(); }
+  await new Promise((resolve) => { if (closed) resolve(); else socket.once('close', resolve); });
 } else if (['wait', 'reply', 'end'].includes(command)) {
   state();
   const controlPath = join(profileDir, `${profile}.sock`);
@@ -255,6 +301,7 @@ if (command === 'profiles') {
   const acceptedCalls = new Set();
   const missed = [];
   const callReports = new Map();
+  const attachers = new Map();
   const ownerIds = new Set((process.env.RELAY_OWNER_IDS ?? '').split(',').map((id) => id.trim()).filter(Boolean));
 
   function startCallRecord(callId, { direction, peer, peerAlias, intent, task }) {
@@ -357,6 +404,31 @@ if (command === 'profiles') {
       return { ok: true, callId: request.callId, details: formatDetails(info) };
     }
     return { ok: false, error: 'invalid_request' };
+  }) : null;
+  function broadcastAttach(callId, event) {
+    const set = attachers.get(callId);
+    if (!set) return;
+    const line = `${JSON.stringify(event)}\n`;
+    for (const socket of set) socket.write(line);
+    if (event.type === 'ended') {
+      for (const socket of set) socket.end();
+      attachers.delete(callId);
+    }
+  }
+  const closeAttach = harness ? await startAttachServer(`${controlPath}.attach`, {
+    onOpen: (callId, socket) => {
+      if (!acceptedCalls.has(callId) && !callSessions.has(callId)) return false;
+      const set = attachers.get(callId) ?? new Set();
+      set.add(socket);
+      attachers.set(callId, set);
+      socket.on('close', () => {
+        set.delete(socket);
+        if (set.size === 0) attachers.delete(callId);
+      });
+      return true;
+    },
+    onSay: (callId, text) => client.say(callId, text),
+    onEnd: (callId, result) => client.end(callId, result),
   }) : null;
   let dnd = Boolean(value.dnd);
   if (dnd) client.setDnd(true);
@@ -516,10 +588,12 @@ if (command === 'profiles') {
       client.end(callId, text.slice(0, 4000));
     } else {
       client.say(callId, text.slice(0, 4000));
-      session.idle = setTimeout(() => {
-        if (active.get(callId) === session.controller) client.end(callId, text.slice(0, 4000));
-      }, idleMs);
-      session.idle.unref?.();
+      if (!(attachers.get(callId)?.size)) {
+        session.idle = setTimeout(() => {
+          if (active.get(callId) === session.controller) client.end(callId, text.slice(0, 4000));
+        }, idleMs);
+        session.idle.unref?.();
+      }
     }
   }
 
@@ -567,6 +641,7 @@ if (command === 'profiles') {
       enqueueTurn(callId, session);
     }
     resolveCallWaiters(callId, { status: 'active', result: text });
+    broadcastAttach(callId, { type: 'message', from, text });
   });
   client.on('call.ended', ({ callId, status, reason, result }) => {
     const record = callRecords.get(callId);
@@ -582,6 +657,7 @@ if (command === 'profiles') {
     active.delete(callId);
     if (record) rememberReport(callId, { peer: record.peerAlias ?? record.peer, direction: record.direction,
       intent: record.intent, task: record.task, result, report: record.report, status, reason });
+    broadcastAttach(callId, { type: 'ended', status, reason, result });
     finishCallRecord(callId, { status, reason, result });
     resolveCallWaiters(callId, { status, reason, result });
     console.log(`Call ${callId} ${status}${result ? `; result: ${result}` : ''}`);
@@ -643,11 +719,12 @@ if (command === 'profiles') {
   }
   unwatchFile(statePath, refreshState);
   await closeControl?.();
+  await closeAttach?.();
   const unfinished = [...active.values()];
   active.clear();
   for (const controller of unfinished) controller.abort();
   await client.close();
 } else {
-  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call [--multi] <alias> <intent> <task> | wait <call-id> | reply <call-id> <text> | end <call-id> [result] | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
+  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call [--multi] <alias> <intent> <task> | attach <call-id> | wait <call-id> | reply <call-id> <text> | end <call-id> [result] | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
   if (command) process.exitCode = 1;
 }
