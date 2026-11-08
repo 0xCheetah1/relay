@@ -335,3 +335,19 @@ test('calls to an offline peer are queued and delivered on reconnect', async (t)
   assert.equal(event.calls[0].intent, 'Offline test');
   await bob.close();
 });
+
+test('the relay rate-limits call requests per identity', async (t) => {
+  const server = createRelayServer({ ringMs: 70, callMs: 100, rateCallsPerMin: 1 });
+  const url = await server.listen();
+  const alice = new RelayClient({ identity: createIdentity(), url });
+  const bob = new RelayClient({ identity: createIdentity(), url });
+  t.after(async () => { await alice.close(); await bob.close(); await server.close(); });
+  await Promise.all([alice.connect(), bob.connect()]);
+  alice.addContact('bob', bob.identity.id);
+  const first = next(bob, 'call.ringing');
+  alice.dial('bob', { intent: 'One', task: 'One' });
+  await first;
+  const limited = next(alice, 'protocol.error');
+  alice.dial('bob', { intent: 'Two', task: 'Two' });
+  assert.equal((await limited).code, 'rate_limited');
+});

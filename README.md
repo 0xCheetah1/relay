@@ -161,13 +161,15 @@ To run a different private instance locally, set `RELAY_HOST=127.0.0.1`, `RELAY_
 | `RELAY_HARNESS_TIMEOUT_MS` | Max time a bridge waits for the harness to answer (default `110000`). |
 | `RELAY_MAX_TURNS` | Max agent turns before the bridge ends a call (default `8`). |
 | `RELAY_TURN_IDLE_MS` | How long a bridge waits for the next turn before ending the call (default `30000`). |
+| `RELAY_RATE_CALLS_PER_MIN` | Per-identity call-request limit (default `10`). |
+| `RELAY_RATE_MESSAGES_PER_MIN` | Per-identity call-message limit (default `60`). |
 
 ## Still to build
 
 - Key rotation, backup/recovery tooling and stronger storage for multiple server instances. The deployed identity pins persist across a single server restart.
 - Result delivery into the original agent task: `relay call` returns the answer as JSON to the harness's terminal tool, but it is not yet injected into the caller's existing agent conversation. Each accepted call is one agent turn; multi-turn back-and-forth is not implemented.
 - Public alias registry and verifiable caller names. Today's aliases are private entries in the caller's phonebook.
-- End-to-end encryption, signed call frames, rate limiting, and other hardening for an internet-facing deployment. The relay currently sees call text and can forge routed messages. Use it only within a private network for this milestone.
+- End-to-end encryption and signed call frames for an internet-facing deployment. The relay currently sees call text and can forge routed messages. Per-identity rate limiting is in place.
 - A public TLS endpoint and a NEAR identity integration. The current server is private-network only.
 - Codex and Claude Code adapters.
 

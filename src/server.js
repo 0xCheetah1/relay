@@ -9,7 +9,8 @@ const send = (socket, message) => {
 };
 const cleanText = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
 
-export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '127.0.0.1', port = 0, identityStore } = {}) {
+export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '127.0.0.1', port = 0, identityStore,
+  rateCallsPerMin = 10, rateMessagesPerMin = 60 } = {}) {
   const http = createServer();
   const wss = new WebSocketServer({ server: http, maxPayload: 32 * 1024 });
   const keys = new Map(Object.entries(identityStore?.load() ?? {}));
@@ -24,6 +25,17 @@ export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '12
     const event = { type: 'call.ended', callId: call.id, status, reason, result };
     send(peers.get(call.from)?.socket, event);
     send(peers.get(call.to)?.socket, event);
+  }
+
+  function allow(peer, bucket, limit) {
+    const now = Date.now();
+    const state = peer.rate?.[bucket] ?? { tokens: limit, last: now };
+    state.tokens = Math.min(limit, state.tokens + ((now - state.last) / 60000) * limit);
+    state.last = now;
+    peer.rate = { ...(peer.rate ?? {}), [bucket]: state };
+    if (state.tokens < 1) return false;
+    state.tokens -= 1;
+    return true;
   }
 
   function handle(peer, message) {
@@ -48,9 +60,11 @@ export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '12
         return send(socket, { type: 'error', code: 'invalid_call_request', callId });
       }
       if (calls.has(callId)) return send(socket, { type: 'error', code: 'duplicate_call', callId });
+      if (!allow(peer, 'calls', rateCallsPerMin)) return send(socket, { type: 'error', code: 'rate_limited', callId });
       const recipient = peers.get(to);
       if (!recipient) {
-        const queue = missedQueues.get(to) ?? [];
+        const cutoff = Date.now() - 7 * 86400000;
+        const queue = (missedQueues.get(to) ?? []).filter((item) => item.at >= cutoff);
         queue.push({ callId, from: id, intent, task, at: Date.now(), reason: 'peer_offline' });
         missedQueues.set(to, queue.slice(-50));
         return send(socket, { type: 'call.unavailable', callId, reason: 'peer_offline' });
@@ -83,6 +97,7 @@ export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '12
       if (!call || call.state !== 'active' || (id !== call.from && id !== call.to) || !cleanText(message.text, 4000)) {
         return send(socket, { type: 'error', code: 'invalid_message', callId: message.callId });
       }
+      if (!allow(peer, 'messages', rateMessagesPerMin)) return send(socket, { type: 'error', code: 'rate_limited', callId: message.callId });
       return send(peers.get(id === call.from ? call.to : call.from)?.socket,
         { type: 'call.message', callId: call.id, from: id, text: message.text });
     }
