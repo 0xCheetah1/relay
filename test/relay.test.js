@@ -10,6 +10,7 @@ import { createIdentity } from '../src/identity.js';
 import { createRelayServer } from '../src/server.js';
 import { jsonStore } from '../src/store.js';
 import { formatTranscript } from '../src/transcript.js';
+import { createEncryptionKeyPair, decryptPayload, deriveCallKey, encryptPayload, signEnvelope, verifyEnvelope } from '../src/crypto.js';
 import { invokeHarness, buildCallPrompt, redactSharedAnswer, stripDone, extractReport } from '../src/adapters.js';
 
 function next(client, type, timeout = 2000) {
@@ -37,7 +38,7 @@ test('two peers dial by alias, accept, exchange messages and return a result', a
   const env = await setup();
   t.after(() => env.close());
   const ringing = next(env.bob, 'call.ringing');
-  const callId = env.alice.dial('bob', { intent: 'Plan a meeting', task: 'Find a time' });
+  const callId = await env.alice.dial('bob', { intent: 'Plan a meeting', task: 'Find a time' });
   assert.equal((await ringing).intent, 'Plan a meeting');
   const accepted = next(env.alice, 'call.accepted');
   env.bob.accept(callId);
@@ -54,14 +55,14 @@ test('unanswered calls expire, and DND makes the recipient unavailable', async (
   const env = await setup();
   t.after(() => env.close());
   const ignored = next(env.alice, 'call.ended');
-  env.alice.dial('bob', { intent: 'Research', task: 'Summarize a document' });
+  await env.alice.dial('bob', { intent: 'Research', task: 'Summarize a document' });
   assert.equal((await ignored).status, 'ignored');
   const updated = next(env.bob, 'presence.updated');
   env.bob.setDnd(true);
   await updated;
   const missed = next(env.bob, 'call.missed');
   const unavailable = next(env.alice, 'call.unavailable');
-  env.alice.dial('bob', { intent: 'Research', task: 'Summarize a document' });
+  await env.alice.dial('bob', { intent: 'Research', task: 'Summarize a document' });
   const dndEvent = await unavailable;
   assert.equal(dndEvent.type, 'call.unavailable');
   assert.equal(dndEvent.reason, 'recipient_dnd');
@@ -71,7 +72,7 @@ test('unanswered calls expire, and DND makes the recipient unavailable', async (
   await env.bob.close();
   await new Promise((resolve) => setTimeout(resolve, 50));
   const offline = next(env.alice, 'call.unavailable');
-  env.alice.dial('bob', { intent: 'Research', task: 'Summarize a document' });
+  await env.alice.dial('bob', { intent: 'Research', task: 'Summarize a document' });
   assert.equal((await offline).reason, 'peer_offline');
 });
 
@@ -84,7 +85,7 @@ test('a blocked caller is rejected before the call rings', async (t) => {
   let rang = false;
   env.bob.once('call.ringing', () => { rang = true; });
   const unavailable = next(env.alice, 'call.unavailable');
-  env.alice.dial('bob', { intent: 'Research', task: 'Check a claim' });
+  await env.alice.dial('bob', { intent: 'Research', task: 'Check a claim' });
   assert.equal((await unavailable).reason, 'caller_blocked');
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(rang, false);
@@ -94,7 +95,7 @@ test('calls have a hard deadline even if the peers keep sending messages', async
   const env = await setup({ callMs: 80 });
   t.after(() => env.close());
   const ringing = next(env.bob, 'call.ringing');
-  const callId = env.alice.dial('bob', { intent: 'Research', task: 'Check a claim' });
+  const callId = await env.alice.dial('bob', { intent: 'Research', task: 'Check a claim' });
   await ringing;
   const accepted = next(env.alice, 'call.accepted');
   env.bob.accept(callId);
@@ -108,13 +109,13 @@ test('the recipient can reject without opening a session', async (t) => {
   const env = await setup();
   t.after(() => env.close());
   const ringing = next(env.bob, 'call.ringing');
-  const callId = env.alice.dial('bob', { intent: 'Meeting', task: 'Schedule a meeting' });
+  const callId = await env.alice.dial('bob', { intent: 'Meeting', task: 'Schedule a meeting' });
   await ringing;
   const ended = next(env.alice, 'call.ended');
   env.bob.reject(callId);
   assert.equal((await ended).status, 'rejected');
   const error = next(env.alice, 'protocol.error');
-  env.alice.say(callId, 'This must fail');
+  env.alice.send({ type: 'call.message', callId, payload: { n: 'AA', c: 'AA', t: 'AA' }, sig: 'AA' });
   assert.equal((await error).code, 'invalid_message');
 });
 
@@ -122,7 +123,7 @@ test('a failed agent run ends the call as failed, not completed', async (t) => {
   const env = await setup();
   t.after(() => env.close());
   const ringing = next(env.bob, 'call.ringing');
-  const callId = env.alice.dial('bob', { intent: 'Research', task: 'Check one claim' });
+  const callId = await env.alice.dial('bob', { intent: 'Research', task: 'Check one claim' });
   await ringing;
   const accepted = next(env.alice, 'call.accepted');
   env.bob.accept(callId);
@@ -136,14 +137,14 @@ test('owner-initiated calls are marked separately from agent calls', async (t) =
   const env = await setup({ ringMs: 300 });
   t.after(() => env.close());
   const ringing = next(env.bob, 'call.ringing');
-  const callId = env.alice.dial('bob', { intent: 'Agent call', task: 'Explain the task' });
+  const callId = await env.alice.dial('bob', { intent: 'Agent call', task: 'Explain the task' });
   assert.equal((await ringing).ownerInitiated, false);
   const ended = next(env.alice, 'call.ended');
   env.bob.reject(callId);
   assert.equal((await ended).status, 'rejected');
 
   const nextRing = next(env.bob, 'call.ringing');
-  const second = env.alice.dial('bob', { intent: 'Ask my agent', task: 'Explain the task', ownerInitiated: true });
+  const second = await env.alice.dial('bob', { intent: 'Ask my agent', task: 'Explain the task', ownerInitiated: true });
   assert.equal((await nextRing).ownerInitiated, true);
   const accepted = next(env.alice, 'call.accepted');
   env.bob.accept(second);
@@ -156,13 +157,13 @@ test('nonparticipant cannot inject messages into another call', async (t) => {
   t.after(async () => { await eve.close(); await env.close(); });
   await eve.connect();
   const ringing = next(env.bob, 'call.ringing');
-  const callId = env.alice.dial('bob', { intent: 'Research', task: 'Check a claim' });
+  const callId = await env.alice.dial('bob', { intent: 'Research', task: 'Check a claim' });
   await ringing;
   const accepted = next(env.alice, 'call.accepted');
   env.bob.accept(callId);
   await accepted;
   const error = next(eve, 'protocol.error');
-  eve.say(callId, 'Spoofed message');
+  eve.send({ type: 'call.message', callId, payload: { n: 'AA', c: 'AA', t: 'AA' }, sig: 'AA' });
   assert.equal((await error).code, 'invalid_message');
 });
 
@@ -191,7 +192,7 @@ test('identity pin survives server restart and refuses a different key', async (
   await original.connect();
   await original.close();
   await first.close();
-  assert.equal(JSON.parse(readFileSync(join(directory, 'identities.json'), 'utf8'))[identity.id], identity.publicKey);
+  assert.equal(JSON.parse(readFileSync(join(directory, 'identities.json'), 'utf8'))[identity.id].signing, identity.publicKey);
   const second = createRelayServer({ identityStore: store });
   const secondUrl = await second.listen();
   t.after(() => second.close());
@@ -325,7 +326,7 @@ test('calls to an offline peer are queued and delivered on reconnect', async (t)
   await env.bob.close();
   await new Promise((resolve) => setTimeout(resolve, 50));
   const unavailable = next(env.alice, 'call.unavailable');
-  env.alice.dial('bob', { intent: 'Offline test', task: 'Are you there?' });
+  await env.alice.dial('bob', { intent: 'Offline test', task: 'Are you there?' });
   assert.equal((await unavailable).reason, 'peer_offline');
   const bob = new RelayClient({ identity: env.bob.identity, url: env.url });
   const queued = next(bob, 'missed.list');
@@ -345,9 +346,23 @@ test('the relay rate-limits call requests per identity', async (t) => {
   await Promise.all([alice.connect(), bob.connect()]);
   alice.addContact('bob', bob.identity.id);
   const first = next(bob, 'call.ringing');
-  alice.dial('bob', { intent: 'One', task: 'One' });
+  await alice.dial('bob', { intent: 'One', task: 'One' });
   await first;
   const limited = next(alice, 'protocol.error');
-  alice.dial('bob', { intent: 'Two', task: 'Two' });
+  await alice.dial('bob', { intent: 'Two', task: 'Two' });
   assert.equal((await limited).code, 'rate_limited');
+});
+
+test('E2E call keys, payloads and signatures round-trip', () => {
+  const alice = createIdentity();
+  const bob = createIdentity();
+  const callId = '11111111-1111-4111-8111-111111111111';
+  const a = deriveCallKey(alice.encryptionPrivateKey, bob.encryptionPublicKey, callId);
+  const b = deriveCallKey(bob.encryptionPrivateKey, alice.encryptionPublicKey, callId);
+  assert.deepEqual(a, b);
+  const payload = encryptPayload(a, { task: 'secret' });
+  assert.deepEqual(decryptPayload(b, payload), { task: 'secret' });
+  const signature = signEnvelope(alice.privateKey, callId, 'call.request', payload);
+  assert.equal(verifyEnvelope(alice.publicKey, callId, 'call.request', payload, signature), true);
+  assert.equal(verifyEnvelope(bob.publicKey, callId, 'call.request', payload, signature), false);
 });

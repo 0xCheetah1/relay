@@ -1,4 +1,5 @@
 import { generateKeyPairSync, randomUUID, sign, verify } from 'node:crypto';
+import { createEncryptionKeyPair } from './crypto.js';
 
 export function createIdentity() {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
@@ -6,6 +7,7 @@ export function createIdentity() {
     id: `rly_${randomUUID()}`,
     publicKey: publicKey.export({ type: 'spki', format: 'pem' }),
     privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }),
+    ...createEncryptionKeyPair(),
   };
 }
 

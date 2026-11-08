@@ -9,6 +9,7 @@ import { createIdentity } from '../src/identity.js';
 import { RelayClient } from '../src/client.js';
 import { jsonStore } from '../src/store.js';
 import { formatTranscript } from '../src/transcript.js';
+import { ensureEncryptionKeys } from '../src/crypto.js';
 import { approvalCode, sameCode, sendControl, sendDecision, sendDial, sendInlineNotice, sendInlineRing, sendOpenClawNotice, sendOpenClawRing, sendTelegramRing, startApprovalSocket, startAttachServer } from '../src/notifications.js';
 
 const profileDir = process.env.RELAY_HOME ?? join(homedir(), '.config', 'relay');
@@ -45,6 +46,10 @@ function state() {
     const available = profiles().filter((name) => name !== profile);
     console.error(`No RELAY identity for profile "${profile}" on this machine.${available.length ? ` Available profiles: ${available.join(', ')}.` : ''} Use RELAY_PROFILE=<profile> or run relay init to create a new identity.`);
     process.exit(1);
+  }
+  if (!value.identity.encryptionPublicKey || !value.identity.encryptionPrivateKey) {
+    value.identity = ensureEncryptionKeys(value.identity);
+    store.save(value);
   }
   return value;
 }
@@ -369,7 +374,7 @@ if (command === 'profiles') {
     const task = command === 'ask' ? args[1] : args[2];
     const intent = command === 'ask' ? task.slice(0, 160) : args[1];
     const startedAt = new Date().toISOString();
-    const callId = client.dial(args[0], { intent, task, ownerInitiated: command === 'ask', minTurns: turns });
+    const callId = await client.dial(args[0], { intent, task, ownerInitiated: command === 'ask', minTurns: turns });
     try {
       const outcome = await new Promise((resolve, reject) => {
         const timer = setTimeout(() => { cleanup(); reject(new Error('Call outcome not received')); }, 260_000);
@@ -483,7 +488,7 @@ if (command === 'profiles') {
       const { alias, intent, task } = request;
       if (!client.contacts.has(alias)) return { ok: false, error: 'unknown_alias' };
       if (typeof intent !== 'string' || !intent.trim() || typeof task !== 'string' || !task.trim()) return { ok: false, error: 'invalid_dial' };
-      const callId = client.dial(alias, { intent: intent.slice(0, 160), task: task.slice(0, 2000), minTurns: request.minTurns });
+      const callId = await client.dial(alias, { intent: intent.slice(0, 160), task: task.slice(0, 2000), minTurns: request.minTurns });
       startCallRecord(callId, { direction: 'outgoing', peer: client.contacts.get(alias), peerAlias: alias, intent, task });
       if (request.multi) return { ok: true, callId, status: 'dialing' };
       const outcome = await waitForCallOutcome(client, callId);
@@ -797,7 +802,7 @@ if (command === 'profiles') {
   });
   client.on('connection.closed', () => console.log('Disconnected from RELAY'));
   if (command === 'dial') {
-    const callId = client.dial(args[0], { intent: args[1], task: args[2] });
+    const callId = await client.dial(args[0], { intent: args[1], task: args[2] });
     startCallRecord(callId, { direction: 'outgoing', peer: client.contacts.get(args[0]), peerAlias: args[0], intent: args[1], task: args[2] });
   }
   const help = '/dial <alias> <intent> :: <task> | /accept <callId> | /reject <callId> | /say <callId> <text> | /end <callId> [result] | /dnd on|off | /quit';
@@ -822,7 +827,7 @@ if (command === 'profiles') {
       else if (line.startsWith('/dial ')) {
         const match = /^\/dial (\S+) (.+?) :: (.+)$/.exec(line);
         if (!match) throw new Error('Usage: /dial <alias> <intent> :: <task>');
-        const callId = client.dial(match[1], { intent: match[2], task: match[3] });
+        const callId = await client.dial(match[1], { intent: match[2], task: match[3] });
         startCallRecord(callId, { direction: 'outgoing', peer: client.contacts.get(match[1]), peerAlias: match[1], intent: match[2], task: match[3] });
       } else if (line.startsWith('/accept ')) acceptCall(line.slice(8).trim());
       else if (line.startsWith('/reject ')) { pending.delete(line.slice(8).trim()); client.reject(line.slice(8).trim()); }

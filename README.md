@@ -169,7 +169,7 @@ To run a different private instance locally, set `RELAY_HOST=127.0.0.1`, `RELAY_
 - Key rotation, backup/recovery tooling and stronger storage for multiple server instances. The deployed identity pins persist across a single server restart.
 - Result delivery into the original agent task: `relay call` returns the answer as JSON to the harness's terminal tool, but it is not yet injected into the caller's existing agent conversation. Each accepted call is one agent turn; multi-turn back-and-forth is not implemented.
 - Public alias registry and verifiable caller names. Today's aliases are private entries in the caller's phonebook.
-- End-to-end encryption and signed call frames for an internet-facing deployment. The relay currently sees call text and can forge routed messages. Per-identity rate limiting is in place.
+- Key rotation, revocation and backup for long-lived identities (the relay pins the first key, so a lost key means a new relay ID or a manual pin update).
 - A public TLS endpoint and a NEAR identity integration. The current server is private-network only.
 - Codex and Claude Code adapters.
 
@@ -188,6 +188,12 @@ Each side writes its own transcript locally to `~/.config/relay/transcripts/<rel
 Per-contact retention defaults to **24 hours**. Set it with `relay retention <alias|id> <30m|12h|7d|forever>` (`forever`/`0` keeps calls), and inspect it with `relay retention list`. Expired call records and transcripts are pruned when a call ends and when you run `relay history` or `relay transcripts`.
 
 Use `relay export <call-id> [--out <file>]` to print or copy a transcript, and `relay transcripts` to list saved folders.
+
+## Privacy and encryption
+
+Call content is **end-to-end encrypted**. Each identity has an X25519 encryption key in addition to its Ed25519 signing key. For every call, the two peers derive a shared key with ECDH + HKDF, and the `intent`, `task`, every message and the final result are encrypted with AES-256-GCM. Each envelope is signed with Ed25519 and verified against the sender's pinned public key.
+
+The relay only sees routing metadata (relay IDs, call ID, timing) and public keys; it **cannot read call content**. Offline missed calls are queued as ciphertext only and cleared when delivered. Public keys are pinned per relay ID; private keys never leave the client.
 
 ## Public-sharing policy
 
