@@ -1,7 +1,8 @@
 export function formatTranscript(record) {
+  const other = record.direction === 'incoming' ? 'Caller' : 'Recipient';
   const lines = [`# RELAY call ${record.callId}`, ''];
   lines.push(`- Direction: ${record.direction ?? '?'}`);
-  lines.push(`- Peer: ${record.peerAlias ? `${record.peerAlias} (${record.peer})` : (record.peer ?? '?')}`);
+  lines.push(`- ${other}: ${record.peerAlias ? `${record.peerAlias} (${record.peer})` : (record.peer ?? '?')}`);
   if (record.intent) lines.push(`- Intent: ${record.intent}`);
   if (record.task) lines.push(`- Task: ${record.task}`);
   lines.push(`- Started: ${record.startedAt ?? '?'}`);
@@ -11,7 +12,7 @@ export function formatTranscript(record) {
   lines.push('', '## Transcript', '');
   if (Array.isArray(record.turns) && record.turns.length > 0) {
     for (const turn of record.turns) {
-      lines.push(`**${turn.from === 'me' ? 'You' : 'Peer'}:** ${turn.text}`, '');
+      lines.push(`**${turn.from === 'me' ? 'You' : other}:** ${turn.text}`, '');
     }
   } else if (record.task) {
     lines.push(`**Task:** ${record.task}`, '');

@@ -315,6 +315,6 @@ test('formatTranscript renders a local call transcript', () => {
     turns: [{ from: 'me', text: 'A1' }, { from: 'peer', text: 'Q?' }], result: 'A1' });
   assert.match(text, /# RELAY call abc/);
   assert.match(text, /\*\*You:\*\* A1/);
-  assert.match(text, /\*\*Peer:\*\* Q\?/);
+  assert.match(text, /\*\*Caller:\*\* Q\?/);
   assert.match(text, /## Result\n\nA1/);
 });
