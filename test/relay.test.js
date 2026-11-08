@@ -9,6 +9,7 @@ import { RelayClient } from '../src/client.js';
 import { createIdentity } from '../src/identity.js';
 import { createRelayServer } from '../src/server.js';
 import { jsonStore } from '../src/store.js';
+import { formatTranscript } from '../src/transcript.js';
 import { invokeHarness, buildCallPrompt, redactSharedAnswer, stripDone, extractReport } from '../src/adapters.js';
 
 function next(client, type, timeout = 2000) {
@@ -305,4 +306,15 @@ test('extractReport pulls the owner report out of the reply', () => {
   assert.equal(out.report, 'Velo asked for 6x7, so I said 42.');
   assert.equal(stripDone(out.text).text, 'The answer is 42.');
   assert.equal(stripDone(out.text).done, true);
+});
+
+test('formatTranscript renders a local call transcript', () => {
+  const text = formatTranscript({ callId: 'abc', direction: 'incoming', peer: 'rly_p', peerAlias: 'velo',
+    intent: 'Test', task: 'Q?', startedAt: '2026-11-08T00:00:00Z', endedAt: '2026-11-08T00:00:10Z',
+    status: 'completed', reason: 'ended_by_recipient', report: 'Velo asked Q.',
+    turns: [{ from: 'me', text: 'A1' }, { from: 'peer', text: 'Q?' }], result: 'A1' });
+  assert.match(text, /# RELAY call abc/);
+  assert.match(text, /\*\*You:\*\* A1/);
+  assert.match(text, /\*\*Peer:\*\* Q\?/);
+  assert.match(text, /## Result\n\nA1/);
 });

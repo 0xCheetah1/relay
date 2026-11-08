@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import { homedir } from 'node:os';
-import { existsSync, readFileSync, readdirSync, watchFile, unwatchFile } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, watchFile, unwatchFile, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { createConnection } from 'node:net';
 import { extractReport, invokeHarness, stripDone } from '../src/adapters.js';
 import { createIdentity } from '../src/identity.js';
 import { RelayClient } from '../src/client.js';
 import { jsonStore } from '../src/store.js';
+import { formatTranscript } from '../src/transcript.js';
 import { approvalCode, sameCode, sendControl, sendDecision, sendDial, sendInlineNotice, sendInlineRing, sendOpenClawNotice, sendOpenClawRing, sendTelegramRing, startApprovalSocket, startAttachServer } from '../src/notifications.js';
 
 const profileDir = process.env.RELAY_HOME ?? join(homedir(), '.config', 'relay');
@@ -77,6 +78,13 @@ function persistRecord(record) {
   list.unshift(record);
   history.records = list.slice(0, 200);
   historyStore.save(history);
+  try {
+    const dir = join(profileDir, 'transcripts');
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    writeFileSync(join(dir, `${record.callId}.md`), formatTranscript(record), { mode: 0o600 });
+  } catch (error) {
+    console.error(`Could not save transcript: ${error.message}`);
+  }
 }
 
 if (command === 'profiles') {
@@ -145,6 +153,29 @@ if (command === 'profiles') {
     const when = r.startedAt ? r.startedAt.slice(0, 19).replace('T', ' ') : '?';
     const who = r.peerAlias ?? r.peer ?? '?';
     console.log(`${when}  ${dir} ${who}  ${r.status}${r.result ? `  ${String(r.result).slice(0, 60)}` : ''}  (${r.callId.slice(0, 8)})`);
+  }
+} else if (command === 'export' && args.length >= 1) {
+  state();
+  const list = Array.isArray(historyStore.load().records) ? historyStore.load().records : [];
+  const record = list.find((item) => item.callId === args[0] || item.callId.startsWith(args[0]));
+  if (!record) throw new Error(`No call matching ${args[0]}`);
+  const text = formatTranscript(record);
+  const outIndex = args.indexOf('--out');
+  if (outIndex !== -1 && args[outIndex + 1]) {
+    const out = resolve(args[outIndex + 1]);
+    writeFileSync(out, text);
+    console.log(`Wrote ${out}`);
+  } else {
+    process.stdout.write(text);
+  }
+} else if (command === 'transcripts' && args.length === 0) {
+  state();
+  const dir = join(profileDir, 'transcripts');
+  if (!existsSync(dir)) console.log('No transcripts saved yet.');
+  else {
+    const names = readdirSync(dir).filter((name) => name.endsWith('.md')).sort().reverse().slice(0, 50);
+    if (names.length === 0) console.log('No transcripts saved yet.');
+    else for (const name of names) console.log(name.slice(0, -3));
   }
 } else if (command === 'history' && args[0] === 'show' && args.length === 2) {
   state();
@@ -725,6 +756,6 @@ if (command === 'profiles') {
   for (const controller of unfinished) controller.abort();
   await client.close();
 } else {
-  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call [--multi] <alias> <intent> <task> | attach <call-id> | wait <call-id> | reply <call-id> <text> | end <call-id> [result] | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
+  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call [--multi] <alias> <intent> <task> | attach <call-id> | export <call-id> [--out <file>] | transcripts | wait <call-id> | reply <call-id> <text> | end <call-id> [result] | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
   if (command) process.exitCode = 1;
 }

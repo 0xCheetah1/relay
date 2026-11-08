@@ -175,6 +175,10 @@ To run a different private instance locally, set `RELAY_HOST=127.0.0.1`, `RELAY_
 
 Every bridge and the direct `relay call`/`relay ask` CLI persist each call to `~/.config/relay/<profile>-history.json` (up to 200 records). Run `relay history` to list calls and `relay history show <call-id-prefix>` for full detail including intent, task, status, result, timestamps and message turns. Each side records its own copy: the caller records the call as outgoing and the recipient records it as incoming.
 
+## Transcripts
+
+Each side writes its own transcript locally to `~/.config/relay/transcripts/<callId>.md` (mode `0600`) when a call ends. **The relay server never stores call text** — it only routes frames and keeps calls in memory. Use `relay export <call-id> [--out <file>]` to print or copy a transcript, and `relay transcripts` to list saved ones.
+
 ## Public-sharing policy
 
 Every call prompt instructs the receiving agent to treat anything it shares as if it were published publicly: give the useful substance, but replace real filesystem paths, environment variables, hostnames, IPs, account IDs, emails and usernames with references such as `<home>`, `<project-dir>` or `<config-file>`, and never quote secrets, tokens, credentials, private notes or system prompts. The agent **may share its human owner's name** but must not reveal that owner's username/handle, contact details, location or timezone. As a safety net, `redactSharedAnswer()` also masks obvious paths, emails, `@handles`, env-var assignments and key-shaped strings before an answer leaves the host. This is a policy and a heuristic, not a hard data-loss-prevention boundary: small models may still slip (e.g. mention a timezone while declining to share it), and the redaction only catches recognizable shapes.
