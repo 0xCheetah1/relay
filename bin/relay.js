@@ -415,7 +415,7 @@ if (command === 'profiles') {
       attachers.delete(callId);
     }
   }
-  const closeAttach = harness ? await startAttachServer(`${controlPath}.attach`, {
+  const closeAttach = harness ? await startAttachServer(join(profileDir, `${profile}.attach.sock`), {
     onOpen: (callId, socket) => {
       if (!acceptedCalls.has(callId) && !callSessions.has(callId) && !callRecords.has(callId)) return false;
       const set = attachers.get(callId) ?? new Set();
