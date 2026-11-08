@@ -69,6 +69,24 @@ def register(ctx):
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         from telegram.ext import CallbackQueryHandler
 
+        async def send_message(**kwargs):
+            try:
+                return await application.bot.send_message(**kwargs)
+            except RuntimeError as exc:
+                if "not initialized" not in str(exc):
+                    raise
+                await application.bot.initialize()
+                return await application.bot.send_message(**kwargs)
+
+        async def edit_message(query, text, **kwargs):
+            try:
+                return await query.edit_message_text(text, **kwargs)
+            except RuntimeError as exc:
+                if "not initialized" not in str(exc):
+                    raise
+                await query.get_bot().initialize()
+                return await query.edit_message_text(text, **kwargs)
+
         async def on_button(update, context):
             query = update.callback_query
             if not query or not query.data or not query.message or not query.from_user:
@@ -86,7 +104,7 @@ def register(ctx):
                 if not result.get("ok"):
                     await query.answer("Call expired or already answered", show_alert=True)
                     try:
-                        await query.edit_message_text("⏳ <b>Call expired</b> — no longer available.",
+                        await edit_message(query, "⏳ <b>Call expired</b> — no longer available.",
                                                       parse_mode="HTML", reply_markup=None)
                     except Exception:
                         pass
@@ -96,7 +114,7 @@ def register(ctx):
                 alias = pending.get("alias") if pending else html.escape("unknown agent")
                 status = "✅ <b>Call accepted</b>" if accepted else "❌ <b>Call rejected</b>"
                 await query.answer("Accepted" if accepted else "Rejected")
-                await query.edit_message_text(f"{status} — from <b>{alias}</b>\n\n<code>{call_id}</code>",
+                await edit_message(query, f"{status} — from <b>{alias}</b>\n\n<code>{call_id}</code>",
                                               parse_mode="HTML", reply_markup=None)
             except Exception:
                 log.exception("RELAY Telegram button failed")
@@ -119,12 +137,12 @@ def register(ctx):
                     return
                 if action == "o":
                     await query.answer("Closed")
-                    await query.edit_message_text("📴 <b>Call ended</b>", parse_mode="HTML", reply_markup=None)
+                    await edit_message(query, "📴 <b>Call ended</b>", parse_mode="HTML", reply_markup=None)
                     return
                 result = await _send_control(call_id, "details")
                 if result.get("ok") and result.get("details"):
                     await query.answer()
-                    await query.edit_message_text(result["details"], reply_markup=None)
+                    await edit_message(query, result["details"], reply_markup=None)
                 else:
                     await query.answer("Details unavailable", show_alert=True)
             except Exception:
@@ -160,7 +178,7 @@ def register(ctx):
                             rows = [[InlineKeyboardButton(str(button.get("text", "?"))[:64], callback_data=str(button.get("data", ""))[:64])
                                      for button in buttons if isinstance(button, dict) and button.get("text") and button.get("data")]]
                             keyboard = InlineKeyboardMarkup(rows) if rows and rows[0] else None
-                        await application.bot.send_message(chat_id=owner, text=text, parse_mode="HTML",
+                        await send_message(chat_id=owner, text=text, parse_mode="HTML",
                                                           disable_notification=bool(call.get("silent", False)),
                                                           reply_markup=keyboard)
                         writer.write(b'{"status":"delivered"}\n')
@@ -188,7 +206,7 @@ def register(ctx):
                         InlineKeyboardButton("✅ Accept", callback_data=f"rc:a:{call_id}:{code}"),
                         InlineKeyboardButton("❌ Reject", callback_data=f"rc:r:{call_id}:{code}"),
                     ]])
-                    await application.bot.send_message(chat_id=owner, text=text, parse_mode="HTML", reply_markup=keyboard)
+                    await send_message(chat_id=owner, text=text, parse_mode="HTML", reply_markup=keyboard)
                     _PENDING[call_id] = {"alias": alias, "at": time.time()}
                     writer.write(b'{"status":"delivered"}\n')
                 except Exception:
