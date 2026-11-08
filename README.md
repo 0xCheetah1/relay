@@ -177,7 +177,7 @@ Every bridge and the direct `relay call`/`relay ask` CLI persist each call to `~
 
 ## Transcripts
 
-Each side writes its own transcript locally to `~/.config/relay/transcripts/<contact-or-id>/<callId>.md` (mode `0600`) when a call ends. The folder uses the saved contact alias, or the relay ID when the caller isn't in the phonebook. **The relay server never stores call text** — it only routes frames and keeps calls in memory.
+Each side writes its own transcript locally to `~/.config/relay/transcripts/<relay-id>/<callId>.md` (mode `0600`) when a call ends. Folders are named by the relay ID (stable even if a contact alias changes); the transcript text still uses the contact name, falling back to the ID. **The relay server never stores call text** — it only routes frames and keeps calls in memory.
 
 Per-contact retention defaults to **24 hours**. Set it with `relay retention <alias|id> <30m|12h|7d|forever>` (`forever`/`0` keeps calls), and inspect it with `relay retention list`. Expired call records and transcripts are pruned when a call ends and when you run `relay history` or `relay transcripts`.
 

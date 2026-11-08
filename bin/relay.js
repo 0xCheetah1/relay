@@ -89,7 +89,7 @@ function retentionSeconds(peerId) {
   return Number.isFinite(configured) ? Math.max(0, configured) : 86400;
 }
 
-function prunePeer(peerId, label) {
+function prunePeer(peerId) {
   const seconds = retentionSeconds(peerId);
   if (seconds === 0) return;
   const cutoff = Date.now() - seconds * 1000;
@@ -101,7 +101,7 @@ function prunePeer(peerId, label) {
     history.records = kept;
     historyStore.save(history);
   }
-  const dir = join(profileDir, 'transcripts', safeName(label));
+  const dir = join(profileDir, 'transcripts', safeName(peerId));
   if (!existsSync(dir)) return;
   for (const name of readdirSync(dir)) {
     const file = join(dir, name);
@@ -115,9 +115,8 @@ function pruneAll() {
   if (!value.identity) return;
   const history = historyStore.load();
   const records = Array.isArray(history.records) ? history.records : [];
-  const byId = new Map(Object.entries(value.contacts ?? {}).map(([alias, id]) => [id, alias]));
   const peers = new Set(records.map((record) => record.peer).filter(Boolean));
-  for (const peerId of peers) prunePeer(peerId, byId.get(peerId) ?? peerId);
+  for (const peerId of peers) prunePeer(peerId);
 }
 
 function persistRecord(record) {
@@ -126,15 +125,14 @@ function persistRecord(record) {
   list.unshift(record);
   history.records = list.slice(0, 200);
   historyStore.save(history);
-  const label = record.peerAlias ?? record.peer ?? 'unknown';
   try {
-    const dir = join(profileDir, 'transcripts', safeName(label));
+    const dir = join(profileDir, 'transcripts', safeName(record.peer ?? 'unknown'));
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     writeFileSync(join(dir, `${record.callId}.md`), formatTranscript(record), { mode: 0o600 });
   } catch (error) {
     console.error(`Could not save transcript: ${error.message}`);
   }
-  if (record.peer) prunePeer(record.peer, label);
+  if (record.peer) prunePeer(record.peer);
 }
 
 if (command === 'profiles') {
