@@ -125,8 +125,8 @@ export async function sendInlineRing(path, { call, alias, code, trusted = true }
   if (result.status !== 'delivered') throw new Error('Hermes Telegram button delivery failed');
 }
 
-export async function sendInlineNotice(path, text, { silent = false } = {}) {
-  const result = await socketRequest(path, { action: 'notice', text, silent });
+export async function sendInlineNotice(path, text, { silent = false, buttons = null } = {}) {
+  const result = await socketRequest(path, { action: 'notice', text, silent, ...(buttons ? { buttons } : {}) });
   if (result.status !== 'delivered') throw new Error('Hermes Telegram notice delivery failed');
 }
 

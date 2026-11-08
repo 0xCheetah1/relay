@@ -246,6 +246,7 @@ if (command === 'profiles') {
   const callSessions = new Map();
   const acceptedCalls = new Set();
   const missed = [];
+  const callReports = new Map();
   const ownerIds = new Set((process.env.RELAY_OWNER_IDS ?? '').split(',').map((id) => id.trim()).filter(Boolean));
 
   function startCallRecord(callId, { direction, peer, peerAlias, intent, task }) {
@@ -341,6 +342,11 @@ if (command === 'profiles') {
       if (typeof request.callId !== 'string') return { ok: false, error: 'invalid_call_id' };
       client.end(request.callId, request.result ?? null);
       return { ok: true };
+    }
+    if (request.action === 'details') {
+      const info = callReports.get(request.callId);
+      if (!info) return { ok: false, error: 'no_details' };
+      return { ok: true, callId: request.callId, details: formatDetails(info) };
     }
     return { ok: false, error: 'invalid_request' };
   }) : null;
@@ -508,27 +514,34 @@ if (command === 'profiles') {
     }
   }
 
-  async function sendCallEndedNotice({ peer, status, reason, result, direction, intent, task, report }) {
-    const lines = [];
-    if (direction === 'incoming') {
-      lines.push(`📞 ${peer ?? 'An agent'} called — ${intent ?? 'no intent'}`);
-      lines.push(`Status: ${status}${reason ? ` (${describeReason(reason)})` : ''}`);
-      if (report) lines.push(report);
-      else {
-        if (task) lines.push(`Asked: ${String(task).slice(0, 240)}`);
-        if (result) lines.push(`I answered: ${String(result).slice(0, 320)}`);
-      }
-    } else {
-      lines.push(`📴 Call ended${peer ? ` — ${peer}` : ''}`);
-      lines.push(`Status: ${status}${reason ? ` (${describeReason(reason)})` : ''}`);
+  function rememberReport(callId, info) {
+    callReports.set(callId, { ...info, at: Date.now() });
+    if (callReports.size > 100) {
+      const oldest = [...callReports.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+      if (oldest) callReports.delete(oldest[0]);
     }
-    const text = lines.join('\n');
+  }
+  function formatDetails(info) {
+    const lines = [`📞 ${info.peer ?? 'An agent'} called — ${info.intent ?? 'no intent'}`,
+      `Status: ${info.status}${info.reason ? ` (${describeReason(info.reason)})` : ''}`];
+    if (info.task) lines.push('', `Asked: ${String(info.task).slice(0, 500)}`);
+    if (info.report) lines.push('', info.report);
+    if (info.result) lines.push('', `Answer: ${String(info.result).slice(0, 1200)}`);
+    return lines.join('\n');
+  }
+  async function sendCallEndedNotice({ callId, peer, status, reason, result, direction, intent }) {
+    const text = direction === 'incoming'
+      ? `📞 ${peer ?? 'An agent'} called — ${intent ?? 'no intent'}\n📴 Call ended (${status})`
+      : `📴 Call ended${peer ? ` — ${peer}` : ''}\nStatus: ${status}${reason ? ` (${describeReason(reason)})` : ''}`;
     try {
       if (harness === 'openclaw') {
         await sendOpenClawNotice({ bin: process.env.RELAY_OPENCLAW_BIN,
           ownerId: process.env.RELAY_OPENCLAW_TELEGRAM_OWNER, text, silent: true, token: openclawToken });
       } else if (harness === 'hermes-gateway' && process.env.RELAY_HERMES_TELEGRAM_SOCKET) {
-        await sendInlineNotice(process.env.RELAY_HERMES_TELEGRAM_SOCKET, text, { silent: true });
+        const buttons = direction === 'incoming'
+          ? [{ text: 'Details', data: `rc:d:${callId}` }, { text: 'OK', data: `rc:o:${callId}` }]
+          : null;
+        await sendInlineNotice(process.env.RELAY_HERMES_TELEGRAM_SOCKET, text, { silent: true, buttons });
       }
     } catch (error) {
       console.error(`Call-ended notice not sent: ${error.message}`);
@@ -558,11 +571,13 @@ if (command === 'profiles') {
     approved.delete(callId);
     active.get(callId)?.abort();
     active.delete(callId);
+    if (record) rememberReport(callId, { peer: record.peerAlias ?? record.peer, direction: record.direction,
+      intent: record.intent, task: record.task, result, report: record.report, status, reason });
     finishCallRecord(callId, { status, reason, result });
     resolveCallWaiters(callId, { status, reason, result });
     console.log(`Call ${callId} ${status}${result ? `; result: ${result}` : ''}`);
-    if (wasActive) sendCallEndedNotice({ peer: record?.peerAlias ?? record?.peer, status, reason, result,
-      direction: record?.direction, intent: record?.intent, task: record?.task, report: record?.report });
+    if (wasActive) sendCallEndedNotice({ callId, peer: record?.peerAlias ?? record?.peer, status, reason, result,
+      direction: record?.direction, intent: record?.intent });
   });
   client.on('call.unavailable', ({ callId, reason = 'peer_unavailable' }) => {
     finishCallRecord(callId, { status: 'unavailable', reason });

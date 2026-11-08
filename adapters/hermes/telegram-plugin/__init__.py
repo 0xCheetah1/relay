@@ -50,6 +50,18 @@ async def _send_decision(call_id, code, action):
         writer.close()
         await writer.wait_closed()
 
+async def _send_control(call_id, action):
+    _, _, approval_path = _paths()
+    reader, writer = await asyncio.wait_for(asyncio.open_unix_connection(str(approval_path)), timeout=2)
+    try:
+        writer.write((json.dumps({"action": action, "callId": call_id}) + "\n").encode())
+        await writer.drain()
+        response = await asyncio.wait_for(reader.readline(), timeout=2)
+        return json.loads(response)
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
 
 def register(ctx):
     def wire(application, adapter):
@@ -92,6 +104,35 @@ def register(ctx):
 
         application.add_handler(CallbackQueryHandler(on_button, pattern=r"^rc:[ar]:[0-9a-f-]{36}:[0-9a-f]{8}$"))
 
+        async def on_call_action(update, context):
+            query = update.callback_query
+            if not query or not query.data or not query.message or not query.from_user:
+                return
+            try:
+                owner = _owner_chat_id()
+                if query.from_user.id != owner or query.message.chat_id != owner or query.message.chat.type != "private":
+                    await query.answer("Only the owner can answer this call", show_alert=True)
+                    return
+                _, action, call_id = query.data.split(":", 2)
+                if not _CALL_ID.fullmatch(call_id):
+                    await query.answer("Invalid call", show_alert=True)
+                    return
+                if action == "o":
+                    await query.answer("Closed")
+                    await query.edit_message_text("📴 <b>Call ended</b>", parse_mode="HTML", reply_markup=None)
+                    return
+                result = await _send_control(call_id, "details")
+                if result.get("ok") and result.get("details"):
+                    await query.answer()
+                    await query.edit_message_text(result["details"], reply_markup=None)
+                else:
+                    await query.answer("Details unavailable", show_alert=True)
+            except Exception:
+                log.exception("RELAY call action failed")
+                await query.answer("Could not open call", show_alert=True)
+
+        application.add_handler(CallbackQueryHandler(on_call_action, pattern=r"^rc:[do]:[0-9a-f-]{36}$"))
+
         async def serve():
             _, path, _ = _paths()
             path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -113,8 +154,15 @@ def register(ctx):
                     owner = _owner_chat_id()
                     if call.get("action") == "notice":
                         text = html.escape(str(call.get("text", ""))[:3500])
+                        buttons = call.get("buttons")
+                        keyboard = None
+                        if isinstance(buttons, list) and buttons:
+                            rows = [[InlineKeyboardButton(str(button.get("text", "?"))[:64], callback_data=str(button.get("data", ""))[:64])
+                                     for button in buttons if isinstance(button, dict) and button.get("text") and button.get("data")]]
+                            keyboard = InlineKeyboardMarkup(rows) if rows and rows[0] else None
                         await application.bot.send_message(chat_id=owner, text=text, parse_mode="HTML",
-                                                          disable_notification=bool(call.get("silent", False)))
+                                                          disable_notification=bool(call.get("silent", False)),
+                                                          reply_markup=keyboard)
                         writer.write(b'{"status":"delivered"}\n')
                         return
                     call_id, code = call["callId"], call["code"]
