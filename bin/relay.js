@@ -171,9 +171,17 @@ if (command === 'profiles') {
     if (!result.ok) process.exitCode = 1;
   }
 } else if (command === 'connect' || command === 'dial' || command === 'bridge' || command === 'call' || command === 'ask') {
-  const multi = command === 'call' && args[0] === '--multi';
-  if (multi) args.shift();
-  if ((command === 'dial' || command === 'call') && args.length !== 3) throw new Error(`Usage: relay ${command}${multi ? ' --multi' : ''} <alias> <intent> <task>`);
+  let multi = false;
+  let turns = 1;
+  if (command === 'call') {
+    while (args.length > 0 && args[0].startsWith('--')) {
+      if (args[0] === '--multi') { multi = true; args.shift(); }
+      else if (args[0] === '--turns') { turns = Number(args[1]); args.splice(0, 2); }
+      else break;
+    }
+    if (!Number.isInteger(turns) || turns < 1 || turns > 20) throw new Error('--turns must be an integer from 1 to 20');
+  }
+  if ((command === 'dial' || command === 'call') && args.length !== 3) throw new Error(`Usage: relay ${command}${multi ? ' --multi' : ''}${turns > 1 ? ` --turns ${turns}` : ''} <alias> <intent> <task>`);
   if (command === 'ask' && args.length !== 2) throw new Error('Usage: relay ask <alias> <question>');
   if (command === 'ask' && !process.stdin.isTTY) throw new Error('relay ask requires your interactive terminal; agent-initiated calls use relay call');
   if (command === 'bridge' && (args.length !== 1 || !['hermes-gateway', 'openclaw'].includes(args[0]))) throw new Error('Usage: relay bridge hermes-gateway|openclaw');
@@ -184,7 +192,7 @@ if (command === 'profiles') {
   if ((command === 'call' || command === 'ask') && existsSync(controlPath)) {
     const task = command === 'ask' ? args[1] : args[2];
     const intent = command === 'ask' ? task.slice(0, 160) : args[1];
-    const result = await sendDial(controlPath, { action: 'dial', alias: args[0], intent, task, multi });
+    const result = await sendDial(controlPath, { action: 'dial', alias: args[0], intent, task, multi, minTurns: turns });
     if (multi) {
       console.log(JSON.stringify({ callId: result.callId, status: result.status ?? 'dialing' }));
       process.exit(result.ok ? 0 : 1);
@@ -207,7 +215,7 @@ if (command === 'profiles') {
     const task = command === 'ask' ? args[1] : args[2];
     const intent = command === 'ask' ? task.slice(0, 160) : args[1];
     const startedAt = new Date().toISOString();
-    const callId = client.dial(args[0], { intent, task, ownerInitiated: command === 'ask' });
+    const callId = client.dial(args[0], { intent, task, ownerInitiated: command === 'ask', minTurns: turns });
     try {
       const outcome = await new Promise((resolve, reject) => {
         const timer = setTimeout(() => { cleanup(); reject(new Error('Call outcome not received')); }, 260_000);
@@ -320,7 +328,7 @@ if (command === 'profiles') {
       const { alias, intent, task } = request;
       if (!client.contacts.has(alias)) return { ok: false, error: 'unknown_alias' };
       if (typeof intent !== 'string' || !intent.trim() || typeof task !== 'string' || !task.trim()) return { ok: false, error: 'invalid_dial' };
-      const callId = client.dial(alias, { intent: intent.slice(0, 160), task: task.slice(0, 2000) });
+      const callId = client.dial(alias, { intent: intent.slice(0, 160), task: task.slice(0, 2000), minTurns: request.minTurns });
       startCallRecord(callId, { direction: 'outgoing', peer: client.contacts.get(alias), peerAlias: alias, intent, task });
       if (request.multi) return { ok: true, callId, status: 'dialing' };
       const outcome = await waitForCallOutcome(client, callId);
@@ -502,8 +510,9 @@ if (command === 'profiles') {
       if (report) record.report = report.slice(0, 300);
     }
     const maxTurns = Math.max(1, Number(process.env.RELAY_MAX_TURNS ?? '8'));
-    const idleMs = Math.max(1000, Number(process.env.RELAY_TURN_IDLE_MS ?? '20000'));
-    if (done || session.turns >= maxTurns) {
+    const minTurns = Math.max(1, Number(session.call.minTurns ?? process.env.RELAY_MIN_TURNS ?? '1'));
+    const idleMs = Math.max(1000, Number(process.env.RELAY_TURN_IDLE_MS ?? '30000'));
+    if ((done && session.turns >= minTurns) || session.turns >= maxTurns) {
       client.end(callId, text.slice(0, 4000));
     } else {
       client.say(callId, text.slice(0, 4000));

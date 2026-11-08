@@ -42,7 +42,8 @@ export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '12
     }
     if (message.type === 'call.request') {
       const { callId, to, intent, task } = message;
-      if (typeof callId !== 'string' || !/^[0-9a-f-]{36}$/.test(callId) || !ID_PATTERN.test(to ?? '') || !cleanText(intent, 160) || !cleanText(task, 2000)) {
+      const minTurns = Number.isInteger(message.minTurns) ? message.minTurns : 1;
+      if (typeof callId !== 'string' || !/^[0-9a-f-]{36}$/.test(callId) || !ID_PATTERN.test(to ?? '') || !cleanText(intent, 160) || !cleanText(task, 2000) || minTurns < 1 || minTurns > 20) {
         return send(socket, { type: 'error', code: 'invalid_call_request', callId });
       }
       if (calls.has(callId)) return send(socket, { type: 'error', code: 'duplicate_call', callId });
@@ -57,7 +58,7 @@ export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '12
       const call = { id: callId, from: id, to, state: 'ringing', timer: null };
       calls.set(callId, call);
       call.timer = setTimeout(() => finish(call, 'ignored', 'ring_timeout'), ringMs);
-      send(recipient.socket, { type: 'call.ringing', callId, from: id, intent, task, ownerInitiated: message.ownerInitiated === true, deadline: Date.now() + ringMs });
+      send(recipient.socket, { type: 'call.ringing', callId, from: id, intent, task, ownerInitiated: message.ownerInitiated === true, minTurns, deadline: Date.now() + ringMs });
       return send(socket, { type: 'call.dialing', callId, to });
     }
     if (message.type === 'call.accept' || message.type === 'call.reject') {

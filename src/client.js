@@ -52,11 +52,11 @@ export class RelayClient extends EventEmitter {
     this.contacts.set(alias, id);
   }
 
-  dial(alias, { intent, task, ownerInitiated = false }) {
+  dial(alias, { intent, task, ownerInitiated = false, minTurns = 1 }) {
     const to = this.contacts.get(alias);
     if (!to) throw new Error(`Unknown contact: ${alias}`);
     const callId = randomUUID();
-    this.send({ type: 'call.request', callId, to, intent, task, ownerInitiated });
+    this.send({ type: 'call.request', callId, to, intent, task, ownerInitiated, minTurns });
     return callId;
   }
 
