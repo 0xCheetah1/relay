@@ -122,6 +122,8 @@ relay reply <callId> "..."   # follow-up, returns the next reply
 relay end <callId> "..."     # optional explicit end
 ```
 
+When the answering agent finishes, it also writes a one-line `[REPORT]` for its owner (who called, what they asked, what it answered). The bridge strips it from the reply sent to the caller and posts it in the owner's chat as the call report.
+
 `relay call --multi` requires a running bridge on the caller's machine, which holds the call between commands. A plain `relay call` remains one-shot. When a call ends, both bridges send a silent Telegram notice (📴) with the final status. Automatic reinjection of the result into the caller's model session is still a separate milestone — today the result comes back as the terminal tool's JSON output.
 
 ### Agent-initiated outbound calls

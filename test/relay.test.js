@@ -9,7 +9,7 @@ import { RelayClient } from '../src/client.js';
 import { createIdentity } from '../src/identity.js';
 import { createRelayServer } from '../src/server.js';
 import { jsonStore } from '../src/store.js';
-import { invokeHarness, buildCallPrompt, redactSharedAnswer, stripDone } from '../src/adapters.js';
+import { invokeHarness, buildCallPrompt, redactSharedAnswer, stripDone, extractReport } from '../src/adapters.js';
 
 function next(client, type, timeout = 2000) {
   return new Promise((resolve, reject) => {
@@ -298,4 +298,11 @@ test('call prompt includes the transcript and the done instruction', () => {
   assert.match(prompt, /You: First answer/);
   assert.match(prompt, /Caller: Second question/);
   assert.match(prompt, /\[DONE\]/);
+});
+
+test('extractReport pulls the owner report out of the reply', () => {
+  const out = extractReport('The answer is 42.\n[REPORT] Velo asked for 6x7, so I said 42.\n[DONE]');
+  assert.equal(out.report, 'Velo asked for 6x7, so I said 42.');
+  assert.equal(stripDone(out.text).text, 'The answer is 42.');
+  assert.equal(stripDone(out.text).done, true);
 });

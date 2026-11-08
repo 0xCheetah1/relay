@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { existsSync, readFileSync, readdirSync, watchFile, unwatchFile } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { invokeHarness, stripDone } from '../src/adapters.js';
+import { extractReport, invokeHarness, stripDone } from '../src/adapters.js';
 import { createIdentity } from '../src/identity.js';
 import { RelayClient } from '../src/client.js';
 import { jsonStore } from '../src/store.js';
@@ -486,11 +486,15 @@ if (command === 'profiles') {
       },
     });
     if (active.get(callId) !== session.controller) return;
-    const { text, done } = stripDone(answer);
+    const { text: withoutReport, report } = extractReport(answer);
+    const { text, done } = stripDone(withoutReport);
     session.transcript.push({ from: 'me', text });
     session.turns += 1;
     const record = callRecords.get(callId);
-    if (record) record.turns.push({ from: 'me', text, at: new Date().toISOString() });
+    if (record) {
+      record.turns.push({ from: 'me', text, at: new Date().toISOString() });
+      if (report) record.report = report.slice(0, 300);
+    }
     const maxTurns = Math.max(1, Number(process.env.RELAY_MAX_TURNS ?? '8'));
     const idleMs = Math.max(1000, Number(process.env.RELAY_TURN_IDLE_MS ?? '20000'));
     if (done || session.turns >= maxTurns) {
@@ -504,13 +508,16 @@ if (command === 'profiles') {
     }
   }
 
-  async function sendCallEndedNotice({ peer, status, reason, result, direction, intent, task }) {
+  async function sendCallEndedNotice({ peer, status, reason, result, direction, intent, task, report }) {
     const lines = [];
     if (direction === 'incoming') {
       lines.push(`📞 ${peer ?? 'An agent'} called — ${intent ?? 'no intent'}`);
       lines.push(`Status: ${status}${reason ? ` (${describeReason(reason)})` : ''}`);
-      if (task) lines.push(`Asked: ${String(task).slice(0, 240)}`);
-      if (result) lines.push(`I answered: ${String(result).slice(0, 320)}`);
+      if (report) lines.push(report);
+      else {
+        if (task) lines.push(`Asked: ${String(task).slice(0, 240)}`);
+        if (result) lines.push(`I answered: ${String(result).slice(0, 320)}`);
+      }
     } else {
       lines.push(`📴 Call ended${peer ? ` — ${peer}` : ''}`);
       lines.push(`Status: ${status}${reason ? ` (${describeReason(reason)})` : ''}`);
@@ -555,7 +562,7 @@ if (command === 'profiles') {
     resolveCallWaiters(callId, { status, reason, result });
     console.log(`Call ${callId} ${status}${result ? `; result: ${result}` : ''}`);
     if (wasActive) sendCallEndedNotice({ peer: record?.peerAlias ?? record?.peer, status, reason, result,
-      direction: record?.direction, intent: record?.intent, task: record?.task });
+      direction: record?.direction, intent: record?.intent, task: record?.task, report: record?.report });
   });
   client.on('call.unavailable', ({ callId, reason = 'peer_unavailable' }) => {
     finishCallRecord(callId, { status: 'unavailable', reason });
