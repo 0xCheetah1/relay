@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { homedir } from 'node:os';
-import { existsSync, mkdirSync, readFileSync, readdirSync, watchFile, unwatchFile, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, watchFile, unwatchFile, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { createConnection } from 'node:net';
@@ -164,6 +164,7 @@ if (command === 'profiles') {
   if (outIndex !== -1 && args[outIndex + 1]) {
     const out = resolve(args[outIndex + 1]);
     writeFileSync(out, text);
+    chmodSync(out, 0o600);
     console.log(`Wrote ${out}`);
   } else {
     process.stdout.write(text);
