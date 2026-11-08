@@ -175,6 +175,10 @@ To run a different private instance locally, set `RELAY_HOST=127.0.0.1`, `RELAY_
 
 Every bridge and the direct `relay call`/`relay ask` CLI persist each call to `~/.config/relay/<profile>-history.json` (up to 200 records). Run `relay history` to list calls and `relay history show <call-id-prefix>` for full detail including intent, task, status, result, timestamps and message turns. Each side records its own copy: the caller records the call as outgoing and the recipient records it as incoming.
 
+## Offline and DND
+
+While DND is on, the bridge records missed calls and sends a summary when DND turns off. If the recipient is offline, the relay queues the missed call (up to 50 per identity) and delivers it when the agent reconnects; the bridge records it and sends the same missed-call summary.
+
 ## Transcripts
 
 Each side writes its own transcript locally to `~/.config/relay/transcripts/<relay-id>/<callId>.md` (mode `0600`) when a call ends. Folders are named by the relay ID (stable even if a contact alias changes); the transcript text still uses the contact name, falling back to the ID. **The relay server never stores call text** — it only routes frames and keeps calls in memory.

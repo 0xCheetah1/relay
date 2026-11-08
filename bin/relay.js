@@ -589,6 +589,19 @@ if (command === 'profiles') {
     missed.push(record);
     console.log(`Missed call ${event.callId} from ${aliases.get(event.from) ?? event.from} while on DND`);
   });
+  client.on('missed.list', ({ calls }) => {
+    if (!Array.isArray(calls) || calls.length === 0) return;
+    for (const call of calls) {
+      const at = new Date(call.at ?? Date.now()).toISOString();
+      const record = { callId: call.callId, direction: 'incoming', peer: call.from, peerAlias: aliases.get(call.from) ?? null,
+        intent: call.intent ?? null, task: call.task ?? null, startedAt: at, endedAt: at,
+        status: 'missed', reason: call.reason ?? 'peer_offline', result: null, turns: [] };
+      persistRecord(record);
+      missed.push(record);
+    }
+    console.log(`Queued missed calls while offline: ${calls.length}`);
+    if (!dnd) flushMissed();
+  });
   client.on('call.ringing', (event) => {
     const { callId, from, intent, task, ownerInitiated } = event;
     const trusted = ownerIds.has(from) || aliases.has(from);

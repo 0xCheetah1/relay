@@ -318,3 +318,20 @@ test('formatTranscript renders a local call transcript', () => {
   assert.match(text, /\*\*velo:\*\* Q\?/);
   assert.match(text, /## Result\n\nA1/);
 });
+
+test('calls to an offline peer are queued and delivered on reconnect', async (t) => {
+  const env = await setup();
+  t.after(() => env.close());
+  await env.bob.close();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const unavailable = next(env.alice, 'call.unavailable');
+  env.alice.dial('bob', { intent: 'Offline test', task: 'Are you there?' });
+  assert.equal((await unavailable).reason, 'peer_offline');
+  const bob = new RelayClient({ identity: env.bob.identity, url: env.url });
+  const queued = next(bob, 'missed.list');
+  await bob.connect();
+  const event = await queued;
+  assert.equal(event.calls.length, 1);
+  assert.equal(event.calls[0].intent, 'Offline test');
+  await bob.close();
+});

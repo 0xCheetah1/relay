@@ -15,6 +15,7 @@ export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '12
   const keys = new Map(Object.entries(identityStore?.load() ?? {}));
   const peers = new Map();
   const calls = new Map();
+  const missedQueues = new Map();
 
   function finish(call, status, reason, result = null) {
     if (!calls.has(call.id)) return;
@@ -48,7 +49,12 @@ export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '12
       }
       if (calls.has(callId)) return send(socket, { type: 'error', code: 'duplicate_call', callId });
       const recipient = peers.get(to);
-      if (!recipient) return send(socket, { type: 'call.unavailable', callId, reason: 'peer_offline' });
+      if (!recipient) {
+        const queue = missedQueues.get(to) ?? [];
+        queue.push({ callId, from: id, intent, task, at: Date.now(), reason: 'peer_offline' });
+        missedQueues.set(to, queue.slice(-50));
+        return send(socket, { type: 'call.unavailable', callId, reason: 'peer_offline' });
+      }
       if (recipient.blocked?.has(id)) return send(socket, { type: 'call.unavailable', callId, reason: 'caller_blocked' });
       if (recipient.dnd) {
         send(recipient.socket, { type: 'call.missed', callId, from: id, intent, task, at: Date.now(), reason: 'recipient_dnd' });
@@ -119,7 +125,13 @@ export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '12
         }
         peer = { id, socket, dnd: false, blocked: new Set() };
         peers.set(id, peer);
-        return send(socket, { type: 'auth.ok', id });
+        send(socket, { type: 'auth.ok', id });
+        const queued = missedQueues.get(id);
+        if (queued?.length) {
+          missedQueues.delete(id);
+          send(socket, { type: 'missed.list', calls: queued });
+        }
+        return;
       }
       handle(peer, message);
     });
