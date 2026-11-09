@@ -59,7 +59,7 @@ connectBtn.onclick = async () => {
     let accounts = await wallet.getAccounts();
     if (!accounts || accounts.length === 0) {
       out.textContent = 'Waiting for the wallet… approve the connection in the app, then tap Connect again.';
-      const connected = await wallet.connect({ contractId: '' });
+      const connected = await wallet.signIn({ contractId: '' });
       accounts = Array.isArray(connected) && connected.length ? connected : await wallet.getAccounts();
     }
     if (!accounts || accounts.length === 0) throw new Error('Wallet returned no accounts');
