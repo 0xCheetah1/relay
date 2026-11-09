@@ -56,7 +56,13 @@ walletSelect.style.display = 'inline-block';
 connectBtn.onclick = async () => {
   try {
     wallet = await selector.wallet(walletSelect.value);
-    const accounts = await wallet.getAccounts();
+    let accounts = await wallet.getAccounts();
+    if (!accounts || accounts.length === 0) {
+      out.textContent = 'Waiting for the wallet… approve the connection in the app, then tap Connect again.';
+      const connected = await wallet.connect({ contractId: '' });
+      accounts = Array.isArray(connected) && connected.length ? connected : await wallet.getAccounts();
+    }
+    if (!accounts || accounts.length === 0) throw new Error('Wallet returned no accounts');
     accountId = accounts[0].accountId;
     out.textContent = 'Connected: ' + accountId;
     signBtn.disabled = false;
