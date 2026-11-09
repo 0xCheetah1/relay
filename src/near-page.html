@@ -45,10 +45,11 @@ try {
   out.textContent = 'Could not load the attestation: ' + error.message;
   throw error;
 }
-const { setupWalletSelector } = await import('https://esm.sh/@near-wallet-selector/core');
-const { setupMeteorWallet } = await import('https://esm.sh/@near-wallet-selector/meteor-wallet');
-const { setupNightly } = await import('https://esm.sh/@near-wallet-selector/nightly');
-const selector = await setupWalletSelector({ network: 'mainnet', modules: [setupMeteorWallet(), setupNightly()] });
+const { setupWalletSelector } = await import('https://esm.sh/@near-wallet-selector/core@10.1.4');
+const { setupMeteorWallet } = await import('https://esm.sh/@near-wallet-selector/meteor-wallet@10.1.4');
+const { setupNightly } = await import('https://esm.sh/@near-wallet-selector/nightly@10.1.4');
+const { setupNearMobileWallet } = await import('https://esm.sh/@near-wallet-selector/near-mobile-wallet@10.1.4');
+const selector = await setupWalletSelector({ network: 'mainnet', modules: [setupNearMobileWallet(), setupMeteorWallet(), setupNightly()] });
 const modules = selector.store.getState().modules;
 walletSelect.innerHTML = modules.map((module) => '<option value="' + module.id + '">' + module.metadata.name + '</option>').join('');
 walletSelect.style.display = 'inline-block';
