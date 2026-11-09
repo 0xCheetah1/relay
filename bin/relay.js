@@ -276,8 +276,9 @@ if (command === 'profiles') {
     const addresses = Object.values(networkInterfaces()).flat().filter((item) => item && item.family === 'IPv4' && !item.internal).map((item) => item.address);
     if (addresses.length === 0) console.log(`Open: http://127.0.0.1:${port}/?token=${token}`);
     for (const address of addresses) console.log(`Open on your phone: http://${address}:${port}/?token=${token}`);
-    console.log('Waiting for the wallet signature (10 min)...');
-    const timeout = new Promise((resolveTimeout) => setTimeout(() => resolveTimeout(null), 10 * 60 * 1000));
+    const timeoutMs = Number(process.env.RELAY_NEAR_TIMEOUT_MS ?? String(30 * 60 * 1000));
+    console.log(`Waiting for the wallet signature (${Math.round(timeoutMs / 60000)} min)...`);
+    const timeout = new Promise((resolveTimeout) => setTimeout(() => resolveTimeout(null), timeoutMs));
     const result = await Promise.race([signed, timeout]);
     await new Promise((resolveClose) => server.close(resolveClose));
     if (result) console.log(`Linked NEAR account ${result.account} to ${result.relayId}`);
