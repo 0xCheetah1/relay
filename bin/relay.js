@@ -277,8 +277,10 @@ if (command === 'profiles') {
     if (addresses.length === 0) console.log(`Open: http://127.0.0.1:${port}/?token=${token}`);
     for (const address of addresses) console.log(`Open on your phone: http://${address}:${port}/?token=${token}`);
     const timeoutMs = Number(process.env.RELAY_NEAR_TIMEOUT_MS ?? String(30 * 60 * 1000));
-    console.log(`Waiting for the wallet signature (${Math.round(timeoutMs / 60000)} min)...`);
-    const timeout = new Promise((resolveTimeout) => setTimeout(() => resolveTimeout(null), timeoutMs));
+    console.log(`Waiting for the wallet signature (${timeoutMs > 0 ? `${Math.round(timeoutMs / 60000)} min` : 'no timeout'})...`);
+    const timeout = timeoutMs > 0
+      ? new Promise((resolveTimeout) => setTimeout(() => resolveTimeout(null), timeoutMs))
+      : new Promise(() => {});
     const result = await Promise.race([signed, timeout]);
     await new Promise((resolveClose) => server.close(resolveClose));
     if (result) console.log(`Linked NEAR account ${result.account} to ${result.relayId}`);
