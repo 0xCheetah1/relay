@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-import { homedir } from 'node:os';
+import { homedir, networkInterfaces } from 'node:os';
+import { randomBytes } from 'node:crypto';
+import { createServer as createHttpServer } from 'node:http';
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, watchFile, unwatchFile, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -10,6 +12,7 @@ import { RelayClient } from '../src/client.js';
 import { jsonStore } from '../src/store.js';
 import { formatTranscript } from '../src/transcript.js';
 import { ensureEncryptionKeys } from '../src/crypto.js';
+import { accountHasKey, attestationMessage, nep413Payload, verifyAttestation, verifyNearSignature } from '../src/near.js';
 import { approvalCode, sameCode, sendControl, sendDecision, sendDial, sendInlineNotice, sendInlineRing, sendOpenClawNotice, sendOpenClawRing, sendTelegramRing, startApprovalSocket, startAttachServer } from '../src/notifications.js';
 
 const profileDir = process.env.RELAY_HOME ?? join(homedir(), '.config', 'relay');
@@ -76,6 +79,7 @@ function describeReason(reason) {
 }
 
 const historyStore = jsonStore(join(profileDir, `${profile}-history.json`));
+const NEAR_PAGE = readFileSync(new URL('../src/near-page.html', import.meta.url), 'utf8');
 
 function safeName(value) {
   return String(value ?? 'unknown').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 64) || 'unknown';
@@ -197,6 +201,89 @@ if (command === 'profiles') {
   console.log(`${args[1]} → ${args[2]}`);
 } else if (command === 'contacts' && args[0] === 'list' && args.length === 1) {
   for (const [alias, id] of Object.entries(state().contacts ?? {})) console.log(`${alias}\t${id}`);
+} else if (command === 'near') {
+  const value = state();
+  const nearPath = join(profileDir, `${profile}-near.json`);
+  if (args.length === 0 || args[0] === 'show') {
+    if (!existsSync(nearPath)) console.log('No NEAR attestation saved. Run: relay near link');
+    else {
+      const data = JSON.parse(readFileSync(nearPath, 'utf8'));
+      console.log(JSON.stringify({ account: data.account, relayId: data.relayId, publicKey: data.publicKey, expiresAt: data.expiresAt }, null, 2));
+    }
+  } else if (args[0] === 'verify' && args[1]) {
+    const data = JSON.parse(readFileSync(resolve(args[1]), 'utf8'));
+    const result = await verifyAttestation(data);
+    console.log(result.ok ? `Valid: ${result.account} -> ${result.relayId}` : `Invalid: ${result.error}`);
+    if (!result.ok) process.exitCode = 1;
+  } else if (args[0] === 'link') {
+    const nonce = randomBytes(32);
+    const issuedAt = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
+    const template = {
+      version: 1,
+      relayId: value.identity.id,
+      signingKey: value.identity.publicKey,
+      encryptionKey: value.identity.encryptionPublicKey,
+      capabilities: ['text', 'multi-turn'],
+      issuedAt,
+      expiresAt,
+      recipient: 'relay',
+      nonce: nonce.toString('base64'),
+    };
+    const token = randomBytes(16).toString('hex');
+    const port = Number(process.env.RELAY_NEAR_PORT ?? '8787');
+    let settle;
+    const signed = new Promise((resolveSigned) => { settle = resolveSigned; });
+    const server = createHttpServer(async (req, res) => {
+      try {
+        const url = new URL(req.url, 'http://localhost');
+        if (url.searchParams.get('token') !== token) { res.writeHead(403); res.end('forbidden'); return; }
+        if (req.method === 'GET' && url.pathname === '/') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(NEAR_PAGE); return; }
+        if (req.method === 'GET' && url.pathname === '/template') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(template)); return; }
+        if (req.method === 'POST' && url.pathname === '/sign') {
+          let body = '';
+          for await (const chunk of req) { body += chunk; if (body.length > 65536) { res.writeHead(413); res.end(); return; } }
+          let payload;
+          try { payload = JSON.parse(body); } catch { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'invalid_json' })); return; }
+          let parsed;
+          try { parsed = JSON.parse(payload.message); } catch { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'invalid_message' })); return; }
+          if (parsed.account !== payload.account || parsed.relayId !== template.relayId
+            || parsed.signingKey !== template.signingKey || parsed.encryptionKey !== template.encryptionKey
+            || parsed.nonce !== template.nonce || payload.recipient !== template.recipient) {
+            res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'mismatch' })); return;
+          }
+          const nepPayload = nep413Payload({ message: payload.message, recipient: payload.recipient, nonce: Buffer.from(payload.nonce, 'base64') });
+          if (!verifyNearSignature({ publicKey: payload.publicKey, signature: payload.signature, payload: nepPayload })) {
+            res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'invalid_signature' })); return;
+          }
+          if (!await accountHasKey(payload.account, payload.publicKey)) {
+            res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'key_not_on_account' })); return;
+          }
+          const attestation = { ...parsed, recipient: payload.recipient, message: payload.message, publicKey: payload.publicKey, signature: payload.signature };
+          writeFileSync(nearPath, JSON.stringify(attestation, null, 2), { mode: 0o600 });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, account: payload.account }));
+          settle(attestation);
+          return;
+        }
+        res.writeHead(404); res.end();
+      } catch (error) {
+        res.writeHead(500); res.end(JSON.stringify({ ok: false, error: error.message }));
+      }
+    });
+    await new Promise((resolveListen, rejectListen) => { server.once('error', rejectListen); server.listen(port, '0.0.0.0', resolveListen); });
+    const addresses = Object.values(networkInterfaces()).flat().filter((item) => item && item.family === 'IPv4' && !item.internal).map((item) => item.address);
+    if (addresses.length === 0) console.log(`Open: http://127.0.0.1:${port}/?token=${token}`);
+    for (const address of addresses) console.log(`Open on your phone: http://${address}:${port}/?token=${token}`);
+    console.log('Waiting for the wallet signature (10 min)...');
+    const timeout = new Promise((resolveTimeout) => setTimeout(() => resolveTimeout(null), 10 * 60 * 1000));
+    const result = await Promise.race([signed, timeout]);
+    await new Promise((resolveClose) => server.close(resolveClose));
+    if (result) console.log(`Linked NEAR account ${result.account} to ${result.relayId}`);
+    else { console.error('Timed out waiting for the signature'); process.exitCode = 1; }
+  } else {
+    throw new Error('Usage: relay near [link | show | verify <attestation.json>]');
+  }
 } else if (command === 'history' && args.length === 0) {
   state();
   pruneAll();
@@ -851,6 +938,6 @@ if (command === 'profiles') {
   for (const controller of unfinished) controller.abort();
   await client.close();
 } else {
-  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call [--multi] <alias> <intent> <task> | attach <call-id> | export <call-id> [--out <file>] | transcripts | retention [list | <alias|id> <30m|12h|7d|forever>] | wait <call-id> | reply <call-id> <text> | end <call-id> [result] | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
+  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call [--multi] <alias> <intent> <task> | attach <call-id> | export <call-id> [--out <file>] | transcripts | near link|show|verify <file> | retention [list | <alias|id> <30m|12h|7d|forever>] | wait <call-id> | reply <call-id> <text> | end <call-id> [result] | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
   if (command) process.exitCode = 1;
 }

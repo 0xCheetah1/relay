@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RELAY · Link NEAR</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; line-height: 1.4; }
+  button, select { font: inherit; padding: .5rem .8rem; margin: .25rem 0; }
+  pre { white-space: pre-wrap; word-break: break-word; background: #f4f4f4; padding: .75rem; border-radius: 8px; }
+</style>
+</head>
+<body>
+<h2>Link your NEAR account</h2>
+<p id="who">Loading…</p>
+<select id="wallets" style="display:none"></select>
+<button id="connect">Connect wallet</button>
+<button id="sign" disabled>Sign attestation</button>
+<pre id="out"></pre>
+<script type="module">
+const params = new URLSearchParams(location.search);
+const token = params.get('token');
+const out = document.getElementById('out');
+const who = document.getElementById('who');
+const walletSelect = document.getElementById('wallets');
+const connectBtn = document.getElementById('connect');
+const signBtn = document.getElementById('sign');
+let wallet = null;
+let accountId = null;
+let template = null;
+try {
+  template = await (await fetch('/template?token=' + encodeURIComponent(token))).json();
+  who.textContent = 'RELAY ID: ' + template.relayId;
+} catch (error) {
+  out.textContent = 'Could not load the attestation: ' + error.message;
+  throw error;
+}
+const { setupWalletSelector } = await import('https://esm.sh/@near-wallet-selector/core');
+const { setupMeteorWallet } = await import('https://esm.sh/@near-wallet-selector/meteor-wallet');
+const { setupNightly } = await import('https://esm.sh/@near-wallet-selector/nightly');
+const selector = await setupWalletSelector({ network: 'mainnet', modules: [setupMeteorWallet(), setupNightly()] });
+const modules = selector.store.getState().modules;
+walletSelect.innerHTML = modules.map((module) => '<option value="' + module.id + '">' + module.metadata.name + '</option>').join('');
+walletSelect.style.display = 'inline-block';
+connectBtn.onclick = async () => {
+  try {
+    wallet = await selector.wallet(walletSelect.value);
+    const accounts = await wallet.getAccounts();
+    accountId = accounts[0].accountId;
+    out.textContent = 'Connected: ' + accountId;
+    signBtn.disabled = false;
+  } catch (error) {
+    out.textContent = 'Connect failed: ' + error.message;
+  }
+};
+signBtn.onclick = async () => {
+  try {
+    signBtn.disabled = true;
+    const message = JSON.stringify({
+      version: 1, account: accountId, relayId: template.relayId,
+      signingKey: template.signingKey, encryptionKey: template.encryptionKey,
+      capabilities: template.capabilities, issuedAt: template.issuedAt,
+      expiresAt: template.expiresAt, nonce: template.nonce,
+    });
+    const nonce = Uint8Array.from(atob(template.nonce), (character) => character.charCodeAt(0));
+    const result = await wallet.signMessage({ message, recipient: template.recipient, nonce });
+    const response = await fetch('/sign?token=' + encodeURIComponent(token), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account: accountId, message, nonce: template.nonce, recipient: template.recipient,
+        publicKey: result.publicKey, signature: result.signature }),
+    });
+    const data = await response.json();
+    out.textContent = data.ok ? '✅ Linked ' + accountId : '❌ ' + data.error;
+  } catch (error) {
+    out.textContent = 'Sign failed: ' + error.message;
+    signBtn.disabled = false;
+  }
+};
+</script>
+</body>
+</html>
