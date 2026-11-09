@@ -237,6 +237,7 @@ if (command === 'profiles') {
     const server = createHttpServer(async (req, res) => {
       try {
         const url = new URL(req.url, 'http://localhost');
+        console.log(`[near] ${req.method} ${url.pathname}${url.searchParams.get('token') === token ? '' : ' (bad token)'}`);
         if (url.searchParams.get('token') !== token) { res.writeHead(403); res.end('forbidden'); return; }
         if (req.method === 'GET' && url.pathname === '/') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(NEAR_PAGE); return; }
         if (req.method === 'GET' && url.pathname === '/template') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(template)); return; }

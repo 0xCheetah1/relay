@@ -17,6 +17,16 @@
 <button id="connect">Connect wallet</button>
 <button id="sign" disabled>Sign attestation</button>
 <pre id="out"></pre>
+<script>
+window.addEventListener('error', (event) => {
+  const out = document.getElementById('out');
+  if (out) out.textContent = 'Page error: ' + (event.message || 'unknown');
+});
+window.addEventListener('unhandledrejection', (event) => {
+  const out = document.getElementById('out');
+  if (out) out.textContent = 'Page error: ' + ((event.reason && event.reason.message) || event.reason || 'unknown');
+});
+</script>
 <script type="module">
 const params = new URLSearchParams(location.search);
 const token = params.get('token');
