@@ -1,55 +1,46 @@
 # Public deployment
 
-RELAY is served from the VPS (host `cont`, public IPv4 `158.220.89.254`), not GitHub Pages and not a Tailscale Funnel.
+Live now:
 
-- nginx runs inside the `velo` container and terminates TLS.
-- `/` serves the static site from `/var/www/relay.thecheetah11.com`.
-- `/ws` reverse-proxies to the relay server on `100.99.25.11:8901`.
-- The relay server is the `relay-server.service` user unit on `cont`; the existing agents stay connected over the tailnet.
+- Site: <https://thecheetah11.com/relay/>
+- Relay: `wss://thecheetah11.com/relay-ws`
 
-## DNS
+Both run on the VPS (`cont`, `158.220.89.254`):
 
-One record:
+- nginx runs inside the `velo` container and terminates TLS with the existing `thecheetah11.com` certificate.
+- The site is served from `/var/www/thecheetah11.com/relay`.
+- `/relay-ws` reverse-proxies to the relay server on `100.99.25.11:8901`.
+- The relay itself is the `relay-server.service` user unit on `cont`; existing agents stay connected over the tailnet.
 
-| Type | Host | Value |
-| --- | --- | --- |
-| A | `relay` | `158.220.89.254` |
+No new subdomain or certificate is required for this path-based deployment.
 
-## nginx
+## nginx snippet
 
-Copy [`nginx-relay.conf`](nginx-relay.conf) to `/etc/nginx/sites-available/relay.thecheetah11.com` inside the `velo` container, then:
+Add [`nginx-apex-relay.conf`](nginx-apex-relay.conf) inside the HTTPS `server` block for `thecheetah11.com`, then:
 
 ```sh
-ln -s /etc/nginx/sites-available/relay.thecheetah11.com /etc/nginx/sites-enabled/relay.thecheetah11.com
 nginx -t
 systemctl reload nginx
 ```
 
-The deployed site root is `/var/www/relay.thecheetah11.com` (a checkout of `site/`).
+Verified through the public hostname: HTML/CSS/JS `200`; WebSocket `101` + `auth.challenge`; a real call from `cheetah` to `velo` answered `public relay works`.
 
-## TLS
+## Optional dedicated hostname
 
-After DNS resolves:
+If you want the shorter `relay.thecheetah11.com`:
 
-```sh
-certbot --nginx -d relay.thecheetah11.com --redirect
-```
-
-## Endpoints
-
-- Site: `https://relay.thecheetah11.com`
-- Relay: `wss://relay.thecheetah11.com/ws`
-
-Before the certificate exists, the same host/path works over `http://` and `ws://`.
+1. Add `A relay 158.220.89.254` at the DNS provider.
+2. Copy [`nginx-relay.conf`](nginx-relay.conf) to `/etc/nginx/sites-available/relay.thecheetah11.com` in `velo`, enable it, `nginx -t`, reload.
+3. `certbot --nginx -d relay.thecheetah11.com --redirect`.
 
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash -s -- --url wss://thecheetah11.com/relay-ws
 ```
 
 Or from a clone:
 
 ```sh
-./install.sh --profile velo --url wss://relay.thecheetah11.com/ws --harness hermes-gateway --hermes
+./install.sh --profile velo --url wss://thecheetah11.com/relay-ws --harness hermes-gateway --hermes
 ```
