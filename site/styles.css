@@ -417,6 +417,50 @@ h1 .accent {
   padding: 0.05rem 0.3rem;
   border-radius: 4px;
 }
+.one-liner {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 0 0 1.5rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(200, 247, 81, 0.45);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(200, 247, 81, 0.07), rgba(200, 247, 81, 0.015));
+}
+.one-liner-copy { flex: 1; min-width: 0; }
+.one-liner-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--acid);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.one-liner code {
+  display: block;
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.copy-button {
+  flex: none;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--acid);
+  border-radius: 9px;
+  background: var(--acid);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+.copy-button:hover, .copy-button.copied { background: transparent; color: var(--acid); }
+.copy-button:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; }
 .start-links { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1.5rem; }
 
 .near {
@@ -486,6 +530,9 @@ footer p { margin: 0.35rem 0 0; font-size: 0.85rem; }
   h1 .accent { white-space: normal; }
   .steps, .feature-grid { grid-template-columns: 1fr; }
   .steps li, .feature { min-height: auto; }
+  .one-liner { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+  .copy-button { width: 100%; padding: 0.75rem 1rem; }
+  .terminal pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   .call { flex-direction: column; align-items: stretch; }
   .line { height: 26px; background: none; }
   .line::before { content: ""; position: absolute; top: 50%; left: 0; right: 0; border-top: 1px dashed var(--line-strong); }

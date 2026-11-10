@@ -28,3 +28,32 @@ const navObserver = new IntersectionObserver((entries) => {
 }, { rootMargin: '-45% 0px -45% 0px' });
 
 for (const target of targets) navObserver.observe(target);
+
+for (const button of document.querySelectorAll('.copy-button[data-copy]')) {
+  button.addEventListener('click', async () => {
+    const target = document.getElementById(button.dataset.copy);
+    if (!target) return;
+    const text = target.textContent.trim();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+    }
+    const label = button.textContent;
+    button.textContent = 'Copied';
+    button.classList.add('copied');
+    setTimeout(() => {
+      button.textContent = label;
+      button.classList.remove('copied');
+    }, 1600);
+  });
+}
