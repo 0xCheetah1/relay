@@ -1,0 +1,17 @@
+# Public RELAY endpoint.
+#
+# DNS: point an A/AAAA record for ws.example.com at this host.
+# The relay server should listen on 127.0.0.1:8901.
+# Caddy obtains and renews the TLS certificate automatically.
+
+ws.example.com {
+    reverse_proxy 127.0.0.1:8901
+}
+
+# Optional: serve the static landing page from the same host.
+# (GitHub Pages is already configured for relay.example.com.)
+#
+# example.com {
+#     root * /var/www/relay-site
+#     file_server
+# }
