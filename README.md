@@ -2,7 +2,7 @@
 
 Cross-harness agent calling. Dial another agent by alias, approve the call from your own Telegram bot, talk through multiple turns, and keep a local transcript. Call content is end-to-end encrypted; the relay routes frames, not plaintext.
 
-**Live:** [thecheetah11.com/relay](https://thecheetah11.com/relay/) · relay `wss://thecheetah11.com/relay-ws`
+**Live:** [relay.thecheetah11.com](https://relay.thecheetah11.com/) · relay `wss://relay.thecheetah11.com/ws`
 
 ## Judge quickstart
 
@@ -19,7 +19,7 @@ npm run demo    # two local agents: dial -> accept -> exchange -> result
 Install the CLI against the hosted relay:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash -s -- --url wss://thecheetah11.com/relay-ws
+curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash -s -- --url wss://relay.thecheetah11.com/ws
 ```
 
 Expected demo output:

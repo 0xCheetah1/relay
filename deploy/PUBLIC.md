@@ -1,46 +1,75 @@
 # Public deployment
 
-Live now:
+Live:
 
-- Site: <https://thecheetah11.com/relay/>
-- Relay: `wss://thecheetah11.com/relay-ws`
+- Site: <https://relay.thecheetah11.com/>
+- Relay: `wss://relay.thecheetah11.com/ws`
 
-Both run on the VPS (`cont`, `158.220.89.254`):
+## DNS
 
-- nginx runs inside the `velo` container and terminates TLS with the existing `thecheetah11.com` certificate.
-- The site is served from `/var/www/thecheetah11.com/relay`.
-- `/relay-ws` reverse-proxies to the relay server on `100.99.25.11:8901`.
-- The relay itself is the `relay-server.service` user unit on `cont`; existing agents stay connected over the tailnet.
+| Type | Host | Value |
+| --- | --- | --- |
+| A | `relay` | `158.220.89.254` |
 
-No new subdomain or certificate is required for this path-based deployment.
+## Architecture
 
-## nginx snippet
+- nginx runs inside the `velo` container on the VPS and terminates TLS.
+- Site root: `/var/www/relay.thecheetah11.com`.
+- `/ws` reverse-proxies to the relay server on `100.99.25.11:8901`.
+- The relay is the `relay-server.service` user unit on `cont`; existing agents stay connected over the tailnet.
 
-Add [`nginx-apex-relay.conf`](nginx-apex-relay.conf) inside the HTTPS `server` block for `thecheetah11.com`, then:
+## nginx
+
+Copy [`nginx-relay.conf`](nginx-relay.conf) to `/etc/nginx/sites-available/relay.thecheetah11.com` inside `velo`, then:
 
 ```sh
+ln -s /etc/nginx/sites-available/relay.thecheetah11.com /etc/nginx/sites-enabled/relay.thecheetah11.com
 nginx -t
 systemctl reload nginx
 ```
 
-Verified through the public hostname: HTML/CSS/JS `200`; WebSocket `101` + `auth.challenge`; a real call from `cheetah` to `velo` answered `public relay works`.
+## TLS
 
-## Optional dedicated hostname
+```sh
+certbot --nginx -d relay.thecheetah11.com --redirect
+```
 
-If you want the shorter `relay.thecheetah11.com`:
+This host already has other vhosts bound to `10.212.74.164:443`. Certbot adds wildcard `listen 443 ssl;` listeners; those conflict with the existing 443 bind and nginx fails to reload with `bind() to 0.0.0.0:443 failed`. After certbot, remove the wildcard listeners from the relay vhost and keep the specific one:
 
-1. Add `A relay 158.220.89.254` at the DNS provider.
-2. Copy [`nginx-relay.conf`](nginx-relay.conf) to `/etc/nginx/sites-available/relay.thecheetah11.com` in `velo`, enable it, `nginx -t`, reload.
-3. `certbot --nginx -d relay.thecheetah11.com --redirect`.
+```nginx
+listen 10.212.74.164:443 ssl;
+```
+
+Then:
+
+```sh
+nginx -t && nginx -s reload
+```
+
+## Verified
+
+- `https://relay.thecheetah11.com/` returns `200`; CSS/JS return `200`.
+- `http://relay.thecheetah11.com/` returns `301` to HTTPS.
+- WSS handshake returns `101` + `auth.challenge`.
+- A real call from `cheetah` to `velo` over the public WSS answered `subdomain relay works`.
+
+## Apex fallback
+
+The path deployment remains available:
+
+- <https://thecheetah11.com/relay/>
+- `wss://thecheetah11.com/relay-ws`
+
+Its nginx locations are in [`nginx-apex-relay.conf`](nginx-apex-relay.conf).
 
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash -s -- --url wss://thecheetah11.com/relay-ws
+curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash -s -- --url wss://relay.thecheetah11.com/ws
 ```
 
 Or from a clone:
 
 ```sh
-./install.sh --profile velo --url wss://thecheetah11.com/relay-ws --harness hermes-gateway --hermes
+./install.sh --profile velo --url wss://relay.thecheetah11.com/ws --harness hermes-gateway --hermes
 ```
