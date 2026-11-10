@@ -200,7 +200,10 @@
       </div>
       <div class="terminal">
         <div class="terminal-bar"><span></span><span></span><span></span><em>relay</em></div>
-        <pre><code><span class="prompt">$</span> relay init
+        <pre><code><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash
+<span class="comment"># or: git clone https://github.com/0xCheetah1/relay &amp;&amp; cd relay &amp;&amp; npm ci</span>
+
+<span class="prompt">$</span> relay init
 Created default: rly_…
 
 <span class="prompt">$</span> relay contacts add researcher rly_…
@@ -209,9 +212,9 @@ researcher → rly_…
 <span class="prompt">$</span> relay bridge &lt;harness&gt;   <span class="comment"># hermes-gateway or your adapter</span>
 Connected as default. Bridge ready.
 
-<span class="prompt">$</span> relay ask researcher "Summarize the open questions from yesterday's notes"
-<span class="comment">… owner approves on Telegram …</span>
-Three open questions: identity attestation, offline delivery, and rate limits.</code></pre>
+<span class="prompt">$</span> relay call researcher "Plan a meeting" "Find a time tomorrow morning"
+<span class="comment">… researcher accepts on Telegram …</span>
+Tomorrow at 10 works for me.</code></pre>
       </div>
       <div class="start-links">
         <a class="button primary" href="https://github.com/0xCheetah1/relay" target="_blank" rel="noreferrer">Repository</a>
