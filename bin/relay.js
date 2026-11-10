@@ -227,7 +227,7 @@ if (command === 'profiles') {
       capabilities: ['text', 'multi-turn'],
       issuedAt,
       expiresAt,
-      recipient: 'relay',
+      recipient: process.env.RELAY_NEAR_RECIPIENT ?? 'relay.near',
       nonce: nonce.toString('base64'),
     };
     const token = randomBytes(16).toString('hex');
@@ -241,6 +241,12 @@ if (command === 'profiles') {
         if (url.searchParams.get('token') !== token) { res.writeHead(403); res.end('forbidden'); return; }
         if (req.method === 'GET' && url.pathname === '/') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(NEAR_PAGE); return; }
         if (req.method === 'GET' && url.pathname === '/template') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(template)); return; }
+        if (req.method === 'POST' && (url.pathname === '/debug' || url.pathname === '/error')) {
+          let body = '';
+          for await (const chunk of req) { body += chunk; if (body.length > 16384) { res.writeHead(413); res.end(); return; } }
+          console.log(`[near] ${url.pathname.slice(1)}: ${body.slice(0, 2000)}`);
+          res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}'); return;
+        }
         if (req.method === 'POST' && url.pathname === '/sign') {
           let body = '';
           for await (const chunk of req) { body += chunk; if (body.length > 65536) { res.writeHead(413); res.end(); return; } }
@@ -250,10 +256,10 @@ if (command === 'profiles') {
           try { parsed = JSON.parse(payload.message); } catch { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'invalid_message' })); return; }
           if (parsed.account !== payload.account || parsed.relayId !== template.relayId
             || parsed.signingKey !== template.signingKey || parsed.encryptionKey !== template.encryptionKey
-            || parsed.nonce !== template.nonce || payload.recipient !== template.recipient) {
+            || parsed.nonce !== payload.nonce || payload.recipient !== template.recipient) {
             res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'mismatch' })); return;
           }
-          const nepPayload = nep413Payload({ message: payload.message, recipient: payload.recipient, nonce: Buffer.from(payload.nonce, 'base64') });
+          const nepPayload = nep413Payload({ message: payload.message, recipient: payload.recipient, nonce: Buffer.from(parsed.nonce, 'base64') });
           if (!verifyNearSignature({ publicKey: payload.publicKey, signature: payload.signature, payload: nepPayload })) {
             res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'invalid_signature' })); return;
           }
@@ -465,7 +471,10 @@ if (command === 'profiles') {
     const task = command === 'ask' ? args[1] : args[2];
     const intent = command === 'ask' ? task.slice(0, 160) : args[1];
     const startedAt = new Date().toISOString();
+    const callTurns = [{ from: 'me', text: task, at: startedAt }];
     const callId = await client.dial(args[0], { intent, task, ownerInitiated: command === 'ask', minTurns: turns });
+    const onMessage = (event) => { if (event.callId === callId) callTurns.push({ from: 'peer', text: event.text, at: new Date().toISOString() }); };
+    client.on('call.message', onMessage);
     try {
       const outcome = await new Promise((resolve, reject) => {
         const timer = setTimeout(() => { cleanup(); reject(new Error('Call outcome not received')); }, 260_000);
@@ -487,12 +496,15 @@ if (command === 'profiles') {
         else console.error(`Call ${outcome.status}: ${describeReason(outcome.reason)}`);
       } else console.log(JSON.stringify({ callId, status: outcome.status, reason: outcome.reason, message: outcome.reason ? describeReason(outcome.reason) : null, result: outcome.result }));
       if (outcome.status !== 'completed') process.exitCode = 1;
+      if (outcome.result && !callTurns.some((turn) => turn.from === 'peer' && turn.text === outcome.result)) {
+        callTurns.push({ from: 'peer', text: outcome.result, at: new Date().toISOString() });
+      }
       persistRecord({
         callId, direction: 'outgoing', peer: client.contacts.get(args[0]), peerAlias: args[0],
         intent, task, startedAt, endedAt: new Date().toISOString(),
-        status: outcome.status, reason: outcome.reason ?? null, result: outcome.result ?? null, turns: [],
+        status: outcome.status, reason: outcome.reason ?? null, result: outcome.result ?? null, turns: callTurns,
       });
-    } finally { await client.close(); }
+    } finally { client.off('call.message', onMessage); await client.close(); }
     process.exit();
   }
   console.log(`Connected as ${profile} (${value.identity.id}). Type /help for commands.`);
@@ -513,7 +525,8 @@ if (command === 'profiles') {
       callId, direction, peer, peerAlias: peerAlias ?? null,
       intent: intent ?? null, task: task ?? null,
       startedAt: new Date().toISOString(), endedAt: null,
-      status: null, reason: null, result: null, turns: [],
+      status: null, reason: null, result: null,
+      turns: task ? [{ from: direction === 'outgoing' ? 'me' : 'peer', text: task, at: new Date().toISOString() }] : [],
     });
   }
 
@@ -594,6 +607,8 @@ if (command === 'profiles') {
       if (typeof request.callId !== 'string' || typeof request.text !== 'string' || !request.text.trim()) return { ok: false, error: 'invalid_reply' };
       if (!acceptedCalls.has(request.callId)) return { ok: false, error: 'call_not_active' };
       client.say(request.callId, request.text.slice(0, 4000));
+      const record = callRecords.get(request.callId);
+      if (record) record.turns.push({ from: 'me', text: request.text.slice(0, 4000), at: new Date().toISOString() });
       const event = await waitForCallEvent(request.callId);
       return { ok: event.status === 'active' || event.status === 'completed', callId: request.callId, ...event };
     }
@@ -941,7 +956,13 @@ if (command === 'profiles') {
   active.clear();
   for (const controller of unfinished) controller.abort();
   await client.close();
+} else if (command === 'web') {
+  const port = Number(process.env.RELAY_WEB_PORT ?? '8788');
+  const host = process.env.RELAY_WEB_HOST ?? '127.0.0.1';
+  const { startWeb } = await import('../src/web.js');
+  const { url } = await startWeb({ profileDir, profile, port, host });
+  console.log(`RELAY phonebook: ${url}`);
 } else {
-  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call [--multi] <alias> <intent> <task> | attach <call-id> | export <call-id> [--out <file>] | transcripts | near link|show|verify <file> | retention [list | <alias|id> <30m|12h|7d|forever>] | wait <call-id> | reply <call-id> <text> | end <call-id> [result] | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
+  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call [--multi] <alias> <intent> <task> | attach <call-id> | export <call-id> [--out <file>] | transcripts | near link|show|verify <file> | web | retention [list | <alias|id> <30m|12h|7d|forever>] | wait <call-id> | reply <call-id> <text> | end <call-id> [result] | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
   if (command) process.exitCode = 1;
 }

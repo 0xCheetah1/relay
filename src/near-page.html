@@ -13,6 +13,7 @@
 <body>
 <h2>Link your NEAR account</h2>
 <p id="who">Loading…</p>
+<p><input id="account" value="" placeholder="yourname.near" style="font:inherit;padding:.5rem;width:100%;box-sizing:border-box"></p>
 <select id="wallets" style="display:none"></select>
 <button id="connect">Connect wallet</button>
 <button id="sign" disabled>Sign attestation</button>
@@ -35,6 +36,7 @@ const who = document.getElementById('who');
 const walletSelect = document.getElementById('wallets');
 const connectBtn = document.getElementById('connect');
 const signBtn = document.getElementById('sign');
+const accountInput = document.getElementById('account');
 let wallet = null;
 let accountId = null;
 let template = null;
@@ -45,6 +47,7 @@ try {
   out.textContent = 'Could not load the attestation: ' + error.message;
   throw error;
 }
+const { Buffer } = await import('https://esm.sh/buffer@6.0.3');
 const { setupWalletSelector } = await import('https://esm.sh/@near-wallet-selector/core@10.1.4');
 const { setupMeteorWallet } = await import('https://esm.sh/@near-wallet-selector/meteor-wallet@10.1.4');
 const { setupNightly } = await import('https://esm.sh/@near-wallet-selector/nightly@10.1.4');
@@ -56,31 +59,34 @@ walletSelect.style.display = 'inline-block';
 connectBtn.onclick = async () => {
   try {
     wallet = await selector.wallet(walletSelect.value);
-    let accounts = await wallet.getAccounts();
-    if (!accounts || accounts.length === 0) {
-      out.textContent = 'Waiting for the wallet… approve the connection in the app, then tap Connect again.';
-      const connected = await wallet.signIn({ contractId: '' });
-      accounts = Array.isArray(connected) && connected.length ? connected : await wallet.getAccounts();
-    }
-    if (!accounts || accounts.length === 0) throw new Error('Wallet returned no accounts');
-    accountId = accounts[0].accountId;
-    out.textContent = 'Connected: ' + accountId;
+    accountId = accountInput.value.trim();
+    out.textContent = 'Wallet selected: ' + walletSelect.options[walletSelect.selectedIndex].text + '. Now tap Sign.';
     signBtn.disabled = false;
   } catch (error) {
-    out.textContent = 'Connect failed: ' + error.message;
+    out.textContent = 'Select failed: ' + error.message;
   }
 };
 signBtn.onclick = async () => {
   try {
     signBtn.disabled = true;
+    accountId = accountInput.value.trim();
+    if (!accountId) throw new Error('Enter your NEAR account');
+    const nonce = crypto.getRandomValues(new Uint8Array(32));
+    const nonceB64 = btoa(String.fromCharCode(...nonce));
     const message = JSON.stringify({
       version: 1, account: accountId, relayId: template.relayId,
       signingKey: template.signingKey, encryptionKey: template.encryptionKey,
       capabilities: template.capabilities, issuedAt: template.issuedAt,
-      expiresAt: template.expiresAt, nonce: template.nonce,
+      expiresAt: template.expiresAt, nonce: nonceB64,
     });
-    const nonce = Uint8Array.from(atob(template.nonce), (character) => character.charCodeAt(0));
-    const result = await wallet.signMessage({ message, recipient: template.recipient, nonce });
+    try {
+      await fetch('/debug?token=' + encodeURIComponent(token), { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: walletSelect.value, account: accountId, nonceType: typeof nonce, nonceLength: nonce.length, recipient: template.recipient }) });
+    } catch {}
+    const result = await wallet.signMessage({ message, recipient: template.recipient, nonce: Buffer.from(nonce) });
+    if (result.accountId && result.accountId !== accountId) {
+      throw new Error('Wallet signed with ' + result.accountId + ', not ' + accountId);
+    }
     const response = await fetch('/sign?token=' + encodeURIComponent(token), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -91,6 +97,7 @@ signBtn.onclick = async () => {
     out.textContent = data.ok ? '✅ Linked ' + accountId : '❌ ' + data.error;
   } catch (error) {
     out.textContent = 'Sign failed: ' + error.message;
+    try { await fetch('/error?token=' + encodeURIComponent(token), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ where: 'sign', message: error.message, stack: error.stack }) }); } catch {}
     signBtn.disabled = false;
   }
 };

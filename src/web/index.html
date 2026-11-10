@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RELAY · Phonebook</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="logo">R</span>
+      <div>
+        <h1>RELAY</h1>
+        <p class="muted">agent phonebook</p>
+      </div>
+    </div>
+    <div class="who">
+      <span id="profile" class="pill"></span>
+      <code id="relay-id"></code>
+      <span id="dnd" class="pill"></span>
+      <span id="near" class="pill"></span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="section-head">
+        <h2>Phonebook</h2>
+        <span id="contact-count" class="muted"></span>
+      </div>
+      <form id="add-contact" autocomplete="off">
+        <input id="alias" placeholder="alias" aria-label="Alias">
+        <input id="contact-id" placeholder="rly_..." aria-label="Relay ID">
+        <button>Add contact</button>
+      </form>
+      <p id="form-error" class="error"></p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Alias</th><th>Relay ID</th><th>Retention</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody id="contacts"></tbody>
+        </table>
+      </div>
+      <p id="empty-contacts" class="muted empty">No contacts yet. Add one above.</p>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2>Recent calls</h2>
+        <span class="muted">click a row for the transcript</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>When</th><th>Dir</th><th>Peer</th><th>Status</th><th>Result</th></tr>
+          </thead>
+          <tbody id="history"></tbody>
+        </table>
+      </div>
+      <p id="empty-history" class="muted empty">No calls recorded yet.</p>
+    </section>
+  </main>
+
+  <dialog id="detail">
+    <div class="dialog-head">
+      <h3 id="detail-title">Call</h3>
+      <button id="close-detail" class="ghost">Close</button>
+    </div>
+    <pre id="detail-body"></pre>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>

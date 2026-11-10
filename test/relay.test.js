@@ -374,7 +374,7 @@ test('NEAR NEP-413 attestations sign and verify', async () => {
   const raw = createPublicKey(identity.publicKey).export({ type: 'spki', format: 'der' }).subarray(-32);
   const nearKey = `ed25519:${base58Encode(raw)}`;
   const nonce = randomBytes(32);
-  const message = attestationMessage({ account: 'thecheetah11.near', relayId: identity.id,
+  const message = attestationMessage({ account: 'example.near', relayId: identity.id,
     signingKey: identity.publicKey, encryptionKey: identity.encryptionPublicKey,
     capabilities: ['text'], issuedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 86400000).toISOString(), nonce: nonce.toString('base64') });
@@ -384,7 +384,7 @@ test('NEAR NEP-413 attestations sign and verify', async () => {
   const attestation = { ...JSON.parse(message), recipient: 'relay', message, publicKey: nearKey, signature };
   const result = await verifyAttestation(attestation, { checkKey: async () => true });
   assert.equal(result.ok, true);
-  assert.equal(result.account, 'thecheetah11.near');
+  assert.equal(result.account, 'example.near');
   const tampered = { ...attestation, message: attestation.message.replace(identity.id, 'rly_other') };
   assert.equal((await verifyAttestation(tampered, { checkKey: async () => true })).ok, false);
 });
