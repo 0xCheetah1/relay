@@ -4,6 +4,8 @@ Cross-harness agent calling. Dial another agent by alias, approve the call from 
 
 **Live:** [relay.thecheetah11.com](https://relay.thecheetah11.com/) · relay `wss://relay.thecheetah11.com/ws`
 
+**Judge guide:** [JUDGE.md](JUDGE.md) — five-minute verification, expected output, and an honest status.
+
 ## Judge quickstart
 
 Requires Node 22+.
@@ -19,7 +21,7 @@ npm run demo    # two local agents: dial -> accept -> exchange -> result
 Install the CLI against the hosted relay:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash -s -- --url wss://relay.thecheetah11.com/ws
+curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash
 ```
 
 Expected demo output:
@@ -47,10 +49,19 @@ Two independent clients connect outbound to a WebSocket relay. Each has a random
 
 ### Install the CLI on an agent machine
 
-Requires Node 22+. Copy this project directory to the machine (without `node_modules` or any local identity files), then run:
+Requires Node 22+. One command:
 
 ```sh
-cd /path/to/relay
+curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash
+```
+
+It clones the repo to `~/.local/share/relay`, installs, links `relay`, creates a local identity, and saves the public relay URL. Run `relay id` to print your relay ID.
+
+Manual fallback:
+
+```sh
+git clone https://github.com/0xCheetah1/relay.git
+cd relay
 npm ci --omit=dev
 node bin/relay.js init
 node bin/relay.js id
@@ -61,33 +72,31 @@ The private key and phonebook are in `~/.config/relay/default.json` (mode `0600`
 Exchange the output of `relay id` out of band. On each machine, save the other agent:
 
 ```sh
-node bin/relay.js contacts add researcher rly_... # use the actual ID from the other agent
-node bin/relay.js contacts list
+relay contacts add researcher rly_... # use the actual ID from the other agent
+relay contacts list
 ```
 
 The local demo is available with `npm test` and `npm run demo`.
 
-### Live private server
+### Public relay
 
-Run the relay server on a private host that is reachable only over a VPN or Tailscale network. The deploy unit is `deploy/relay-server.service.example`; bind it to the private interface only:
-
-```sh
-RELAY_HOST=<PRIVATE_IP> RELAY_PORT=8901 RELAY_IDENTITY_DB=/path/to/identities.json npm start
-```
-
-Traffic is protected by the VPN/Tailscale tunnel, **not** by WebSocket TLS. From a machine on that network:
+The deployed relay is `wss://relay.thecheetah11.com/ws`, with TLS terminated by nginx on the VPS. The installer saves that URL; clients connect outbound over TLS.
 
 ```sh
-RELAY_URL=ws://<PRIVATE_IP>:8901 node bin/relay.js connect
+relay connect
 ```
 
-In another terminal or on another agent machine, with its own identity and a saved contact:
+On another machine with its own identity and a saved contact:
 
 ```sh
-RELAY_URL=ws://<PRIVATE_IP>:8901 node bin/relay.js dial researcher "Plan a meeting" "Find a time tomorrow morning"
+relay call researcher "Plan a meeting" "Find a time tomorrow morning"
 ```
 
-The receiver sees the caller ID or saved alias, intent, task and call ID. In an interactive bridge, type `/accept <callId>` or `/reject <callId>` within 30 seconds. During a manual call, use `/say <callId> <message>` and `/end <callId> <result>`. `/dnd on`, `/dnd off`, `/help` and `/quit` work in the connected terminal.
+The receiver sees the caller ID or saved alias, intent, task and call ID. In an interactive bridge, type `/accept <callId>` or `/reject <callId>` within the ring window (120s on the deployed relay). During a manual call, use `/say <callId> <message>` and `/end <callId> <result>`. `/dnd on`, `/dnd off`, `/help` and `/quit` work in the connected terminal.
+
+### Self-hosting
+
+`bin/server.js` is a normal WebSocket server. For your own instance, bind it to loopback and terminate TLS with nginx or Caddy, then set `RELAY_URL=wss://your-relay`. The deployed nginx configuration is in `deploy/PUBLIC.md`. Do not expose plaintext `ws://` on the public internet.
 
 ### Harness bridges
 
@@ -108,8 +117,7 @@ There is no confirmation prompt or tmux session to open. `relay-hermes.service` 
 The owner-initiated flag is a convenience signal from the interactive CLI, not cryptographic proof that a human initiated a call. A process holding the owner's private key could send the same flag directly. For calls from other agents, the one-time approval code is sent to the owner over the Hermes Telegram channel and is checked by the local bridge. Do not share that code with the caller.
 
 ```sh
-RELAY_PROFILE=<caller-profile> RELAY_URL=ws://<PRIVATE_IP>:8901 \
-relay call researcher "Ask for an explanation" "Explain RELAY in one sentence"
+RELAY_PROFILE=<caller-profile> relay call researcher "Ask for an explanation" "Explain RELAY in one sentence"
 ```
 
 If the recipient rejects, does not answer, fails inference or times out, `relay call` returns a nonzero exit and JSON with the actual status. A recipient on DND returns `status: "unavailable"` with `reason: "recipient_dnd"` and a human `message` — distinct from `reason: "peer_offline"` when the agent is not connected at all. A `relay call` from another agent cannot approve itself; the receiving bridge needs the owner to accept through Telegram.
@@ -173,7 +181,7 @@ Tool access on an initiating agent follows that harness's usual policy; the usag
 
 The server never receives client private keys. Deploy units are in `deploy/`.
 
-To run a different private instance locally, set `RELAY_HOST=127.0.0.1`, `RELAY_PORT=8901` and `RELAY_IDENTITY_DB` and run `npm start`. Do not bind it to a public interface in this version.
+To run a self-hosted instance, set `RELAY_HOST=127.0.0.1`, `RELAY_PORT=8901` and `RELAY_IDENTITY_DB`, then put it behind a TLS reverse proxy (`deploy/PUBLIC.md`). Never expose plaintext `ws://` publicly.
 
 ## Environment variables
 
@@ -225,12 +233,12 @@ To run a different private instance locally, set `RELAY_HOST=127.0.0.1`, `RELAY_
 
 ## Still to build
 
-- Key rotation, backup/recovery tooling and stronger storage for multiple server instances. The deployed identity pins persist across a single server restart.
-- Result delivery into the original agent task: `relay call` returns the answer as JSON to the harness's terminal tool, but it is not yet injected into the caller's existing agent conversation. Each accepted call is one agent turn; multi-turn back-and-forth is not implemented.
-- Public alias registry and verifiable caller names. Today's aliases are private entries in the caller's phonebook.
-- Key rotation, revocation and backup for long-lived identities (the relay pins the first key, so a lost key means a new relay ID or a manual pin update).
-- A public TLS endpoint and a NEAR identity integration. The current server is private-network only.
+- NEAR wallet signing UX: the NEP-413 signing/verification backend and `relay near` CLI are implemented; the mobile wallet connection flow is unfinished, so NEAR attestation is CLI-only today.
+- Key rotation, revocation, and backup/recovery for long-lived identities. The relay pins the first key, so a lost key means a new relay ID or a manual pin update.
+- Automatic reinjection of a call result into the caller's existing agent session. `relay call` returns the answer as JSON to the harness's terminal tool.
+- Public alias registry and verifiable caller names. Aliases are private entries in the caller's phonebook.
 - Codex and Claude Code adapters.
+- Multi-instance server persistence/backups. Identity pins persist across a single server restart.
 
 ## Call history
 

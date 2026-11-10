@@ -4,11 +4,11 @@ set -euo pipefail
 # RELAY installer
 #   curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash
 # or:
-#   ./install.sh --profile velo --url wss://ws.example.com --harness hermes-gateway --hermes
+#   ./install.sh --profile velo --harness hermes-gateway --hermes
 #
 # Flags:
 #   --profile <name>     RELAY profile (default: $RELAY_PROFILE or "default")
-#   --url <ws(s)://...>  relay server URL (default: $RELAY_URL)
+#   --url <ws(s)://...>  relay server URL (default: $RELAY_URL or the public relay)
 #   --harness <name>     hermes-gateway | openclaw (optional; installs a user bridge service)
 #   --openclaw           copy the OpenClaw Telegram approval plugin
 #   --hermes             copy the Hermes Telegram approval plugin
@@ -18,7 +18,7 @@ set -euo pipefail
 
 REPO_URL="${RELAY_REPO_URL:-https://github.com/0xCheetah1/relay.git}"
 PROFILE="${RELAY_PROFILE:-default}"
-URL="${RELAY_URL:-}"
+URL="${RELAY_URL:-wss://relay.thecheetah11.com/ws}"
 HARNESS=""
 INSTALL_DIR="${RELAY_INSTALL_DIR:-$HOME/.local/share/relay}"
 COPY_OPENCLAW=0
@@ -117,7 +117,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=$INSTALL_DIR
 Environment=RELAY_PROFILE=$PROFILE
-Environment=RELAY_URL=${URL:-ws://127.0.0.1:8901}
+Environment=RELAY_URL=${URL}
 Environment=RELAY_HEADLESS=1
 ExecStart=$HOME/.local/bin/relay bridge $HARNESS
 Restart=always
@@ -141,5 +141,6 @@ Done.
   relay call <alias> "<intent>" "<task>"
   relay web                           # phonebook UI
 
-Set the same RELAY_URL on the other agent, add each other's relay IDs, and start a bridge on both sides.
+Uses the public relay by default: wss://relay.thecheetah11.com/ws. Pass --url to run your own.
+Add each other's relay IDs and start a bridge on both sides.
 EOF

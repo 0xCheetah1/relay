@@ -65,11 +65,13 @@ Its nginx locations are in [`nginx-apex-relay.conf`](nginx-apex-relay.conf).
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash -s -- --url wss://relay.thecheetah11.com/ws
+curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash
 ```
 
 Or from a clone:
 
 ```sh
-./install.sh --profile velo --url wss://relay.thecheetah11.com/ws --harness hermes-gateway --hermes
+./install.sh --profile velo --harness hermes-gateway --hermes
 ```
+
+The installer targets the public relay by default. Pass `--url wss://your-relay` only for a self-hosted server.
