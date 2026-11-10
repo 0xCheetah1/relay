@@ -1,59 +1,46 @@
 # Public deployment
 
-Two separate public pieces:
+RELAY is served from the VPS (host `cont`, public IPv4 `158.220.89.254`), not GitHub Pages and not a Tailscale Funnel.
 
-- **Landing page** → `relay.thecheetah11.com` via GitHub Pages (static).
-- **Relay endpoint** → `wss://ws.thecheetah11.com` via a small TLS reverse proxy in front of the relay server.
+- nginx runs inside the `velo` container and terminates TLS.
+- `/` serves the static site from `/var/www/relay.thecheetah11.com`.
+- `/ws` reverse-proxies to the relay server on `100.99.25.11:8901`.
+- The relay server is the `relay-server.service` user unit on `cont`; the existing agents stay connected over the tailnet.
 
-## Landing page (GitHub Pages)
+## DNS
 
-Already configured in `.github/workflows/pages.yml`; the `site/CNAME` file holds the domain.
-
-At the DNS provider, add:
-
-| Type | Host | Value |
-| --- | --- | --- |
-| CNAME | `relay` | `0xCheetah1.github.io` |
-
-GitHub will verify the domain and issue the certificate. The site workflow is green; once DNS propagates, `https://relay.thecheetah11.com` serves `site/`.
-
-## Relay endpoint
-
-The relay server is `bin/server.js`. Bind it to loopback behind Caddy:
-
-```sh
-RELAY_HOST=127.0.0.1 \
-RELAY_PORT=8901 \
-RELAY_IDENTITY_DB=$HOME/.local/share/relay/identities.json \
-RELAY_CALL_MS=0 \
-node bin/server.js
-```
-
-DNS:
+One record:
 
 | Type | Host | Value |
 | --- | --- | --- |
-| A | `ws` | `<public IPv4 of the relay host>` |
+| A | `relay` | `158.220.89.254` |
 
-Caddy (`/etc/caddy/Caddyfile`):
+## nginx
 
-```caddyfile
-ws.thecheetah11.com {
-    reverse_proxy 127.0.0.1:8901
-}
-```
+Copy [`nginx-relay.conf`](nginx-relay.conf) to `/etc/nginx/sites-available/relay.thecheetah11.com` inside the `velo` container, then:
 
 ```sh
-sudo systemctl reload caddy
+ln -s /etc/nginx/sites-available/relay.thecheetah11.com /etc/nginx/sites-enabled/relay.thecheetah11.com
+nginx -t
+systemctl reload nginx
 ```
 
-Open 80/443 on the host firewall. Clients then use:
+The deployed site root is `/var/www/relay.thecheetah11.com` (a checkout of `site/`).
+
+## TLS
+
+After DNS resolves:
 
 ```sh
-RELAY_URL=wss://ws.thecheetah11.com
+certbot --nginx -d relay.thecheetah11.com --redirect
 ```
 
-The relay only routes ciphertext and public routing metadata; approval, trust, blocklist, DND, and rate limiting still apply. The identity pin database must be the same one the clients already trust; copy it when moving hosts.
+## Endpoints
+
+- Site: `https://relay.thecheetah11.com`
+- Relay: `wss://relay.thecheetah11.com/ws`
+
+Before the certificate exists, the same host/path works over `http://` and `ws://`.
 
 ## Install
 
@@ -64,5 +51,5 @@ curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | 
 Or from a clone:
 
 ```sh
-./install.sh --profile velo --url wss://ws.thecheetah11.com --harness hermes-gateway --hermes
+./install.sh --profile velo --url wss://relay.thecheetah11.com/ws --harness hermes-gateway --hermes
 ```
