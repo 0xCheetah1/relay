@@ -1,10 +1,41 @@
 # RELAY
 
-Cross-harness agent calling, built one verifiable milestone at a time.
+Cross-harness agent calling. Dial another agent by alias, approve the call from your own Telegram bot, talk through multiple turns, and keep a local transcript. Call content is end-to-end encrypted; the relay routes frames, not plaintext.
 
-## Current milestone: installable terminal client + private relay server
+## Judge quickstart
 
-Two independent clients connect outbound to a WebSocket relay. Each has a random UUIDv4 relay ID and an Ed25519 keypair. The relay challenges new connections, persists the public key bound to each ID, and routes calls by ID. A caller saves an alias in its local phonebook and dials it with an intent and task. Calls need approval; unanswered calls expire after 30 seconds. Accepted calls exchange text and end with a result or time out after 60 seconds. The recipient can turn on DND.
+Requires Node 22+.
+
+```sh
+git clone https://github.com/0xCheetah1/relay.git
+cd relay
+npm ci
+npm test        # 26 tests
+npm run demo    # two local agents: dial -> accept -> exchange -> result
+```
+
+Expected demo output:
+
+```
+Caller saved researcher as rly_...
+Incoming call from planner: Plan a meeting (Find a time tomorrow morning)
+Planner: Can we meet tomorrow at 10?
+Call completed: Tomorrow at 10 works for me.
+```
+
+Local phonebook (writes your local profile only):
+
+```sh
+node bin/web.js     # http://127.0.0.1:8788
+```
+
+Public landing page:
+
+```sh
+python3 -m http.server 8789 --directory site   # http://127.0.0.1:8789
+```
+
+Two independent clients connect outbound to a WebSocket relay. Each has a random UUIDv4 relay ID and an Ed25519 signing key plus an X25519 encryption key. The relay challenges new connections, pins the public keys, and routes calls by ID. A caller saves an alias in its local phonebook and dials with an intent and task. Calls need approval; unanswered calls expire. Accepted calls stay open for multiple turns and end with a result, an explicit end, or the call timeout. The recipient can turn on DND, block a caller, or let calls queue while offline.
 
 ### Install the CLI on an agent machine
 
@@ -163,6 +194,26 @@ To run a different private instance locally, set `RELAY_HOST=127.0.0.1`, `RELAY_
 | `RELAY_TURN_IDLE_MS` | How long a bridge waits for the next turn before ending the call (default `30000`). |
 | `RELAY_RATE_CALLS_PER_MIN` | Per-identity call-request limit (default `10`). |
 | `RELAY_RATE_MESSAGES_PER_MIN` | Per-identity call-message limit (default `60`). |
+
+## What to review
+
+| Area | File |
+| --- | --- |
+| Relay routing, ring/call timers, rate limit, offline queue | `src/server.js` |
+| Per-caller trust policy + public-sharing prompt | `src/adapters.js` |
+| E2E (X25519 + HKDF + AES-256-GCM) + Ed25519 envelopes | `src/crypto.js` |
+| CLI, bridge, multi-turn, attach, transcripts, retention | `bin/relay.js` |
+| Phonebook UI | `src/web.js`, `src/web/` |
+| Public landing page | `site/` |
+| Optional NEAR NEP-413 attestation | `src/near.js`, `relay near` |
+
+## Honest status
+
+- Cross-host calls need a relay server; this repo ships the server (`bin/server.js`).
+- Telegram approval is implemented for Hermes and OpenClaw.
+- NEAR attestation: signing/verification backend is implemented; the mobile wallet connection flow is still being finished.
+- Key rotation/revocation and Codex/Claude adapters are not built yet.
+- The relay sees routing metadata (relay IDs, call IDs, timing, public keys) but not call content.
 
 ## Still to build
 
