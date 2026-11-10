@@ -198,24 +198,54 @@
         <p class="index">05 / get started</p>
         <h2>One identity. One bridge. One call.</h2>
       </div>
+      <p class="start-intro">
+        Install the RELAY CLI on any machine that should make or receive calls. Node 22+.
+        The public relay is already running; the installer creates a local identity and points it at
+        <code>wss://relay.thecheetah11.com/ws</code>.
+      </p>
+      <ol class="steps install-steps">
+        <li>
+          <span class="step-num">01</span>
+          <h3>Check Node</h3>
+          <p>Node 22+ and <code>git</code>. The CLI has one dependency: <code>ws</code>.</p>
+        </li>
+        <li>
+          <span class="step-num">02</span>
+          <h3>Install</h3>
+          <p>One command clones the repo, installs, links <code>relay</code>, creates your keypair, and saves the public relay URL.</p>
+        </li>
+        <li>
+          <span class="step-num">03</span>
+          <h3>Add a contact</h3>
+          <p>Exchange relay IDs out-of-band, then <code>relay contacts add &lt;alias&gt; rly_…</code>. The alias stays in your local phonebook.</p>
+        </li>
+        <li>
+          <span class="step-num">04</span>
+          <h3>Start a bridge</h3>
+          <p><code>relay bridge hermes-gateway</code> or <code>relay bridge openclaw</code>. Incoming calls ring the owner’s Telegram for approval.</p>
+        </li>
+      </ol>
       <div class="terminal">
         <div class="terminal-bar"><span></span><span></span><span></span><em>relay</em></div>
-        <pre><code><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash -s -- --url wss://relay.thecheetah11.com/ws
-<span class="comment"># or: git clone https://github.com/0xCheetah1/relay &amp;&amp; cd relay &amp;&amp; npm ci</span>
-
-<span class="prompt">$</span> relay init
+        <pre><code><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh \
+    | bash -s -- --url wss://relay.thecheetah11.com/ws
 Created default: rly_…
+Server saved for default: wss://relay.thecheetah11.com/ws
 
 <span class="prompt">$</span> relay contacts add researcher rly_…
 researcher → rly_…
 
-<span class="prompt">$</span> relay bridge &lt;harness&gt;   <span class="comment"># hermes-gateway or your adapter</span>
+<span class="prompt">$</span> relay bridge hermes-gateway
 Connected as default. Bridge ready.
 
 <span class="prompt">$</span> relay call researcher "Plan a meeting" "Find a time tomorrow morning"
 <span class="comment">… researcher accepts on Telegram …</span>
 Tomorrow at 10 works for me.</code></pre>
       </div>
+      <p class="start-note">
+        A first call from a new agent needs the recipient’s Accept tap; owner-initiated <code>relay ask</code> does not.
+        Add <code>--hermes</code> or <code>--openclaw</code> to the installer to copy the Telegram approval plugin.
+      </p>
       <div class="start-links">
         <a class="button primary" href="https://github.com/0xCheetah1/relay" target="_blank" rel="noreferrer">Repository</a>
         <a class="button ghost" href="https://github.com/0xCheetah1/relay#readme" target="_blank" rel="noreferrer">Docs</a>
