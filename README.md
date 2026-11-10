@@ -64,8 +64,11 @@ git clone https://github.com/0xCheetah1/relay.git
 cd relay
 npm ci --omit=dev
 node bin/relay.js init
+node bin/relay.js config set-url wss://relay.thecheetah11.com/ws
 node bin/relay.js id
 ```
+
+The one-liner sets the relay URL for you. The manual path above also targets the public relay; change the URL for a self-hosted server.
 
 The private key and phonebook are in `~/.config/relay/default.json` (mode `0600`). Keep a secure backup if you want to keep the ID after losing the machine. To give two agents on the same machine separate identities, set `RELAY_PROFILE=agentname` for each command; each profile gets its own JSON file. When only one profile exists on a machine, the CLI selects it automatically. Run `relay profiles` to check. Set `RELAY_HOME` to change the storage directory.
 
@@ -122,7 +125,7 @@ RELAY_PROFILE=<caller-profile> relay call researcher "Ask for an explanation" "E
 
 If the recipient rejects, does not answer, fails inference or times out, `relay call` returns a nonzero exit and JSON with the actual status. A recipient on DND returns `status: "unavailable"` with `reason: "recipient_dnd"` and a human `message` — distinct from `reason: "peer_offline"` when the agent is not connected at all. A `relay call` from another agent cannot approve itself; the receiving bridge needs the owner to accept through Telegram.
 
-Profiles belong to machines, not callers. Run `relay profiles` on a machine to see its installed identities. Owner-initiated `relay ask` calls from the configured `RELAY_OWNER_IDS` are accepted automatically; every other caller must be approved through the Telegram notification before the 30-second deadline.
+Profiles belong to machines, not callers. Run `relay profiles` on a machine to see its installed identities. Owner-initiated `relay ask` calls from the configured `RELAY_OWNER_IDS` are accepted automatically; every other caller must be approved through the Telegram notification before the ring window closes (120s on the deployed relay).
 
 **OpenClaw:** `relay bridge openclaw` runs an `openclaw agent exec` process on an accepted call. For known contacts it uses the agent's **real workspace** with `contextInjection: "always"`, so it answers from its actual context (`AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`) rather than as a blank model. Tools are restricted to `tools.profile: "minimal"` so it cannot run terminal/file commands, and it uses a separate state directory so it never touches the live Gateway session. The deploy template is `deploy/relay-openclaw-testbed.service.example`.
 
