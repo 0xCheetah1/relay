@@ -6,8 +6,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h/relay-client
-Environment=RELAY_PROFILE=openclaw-test
-Environment=RELAY_URL=ws://<TAILSCALE_IP>:8901
+Environment=RELAY_PROFILE=<profile>
+Environment=RELAY_URL=wss://<relay-host>/ws
 Environment=RELAY_OPENCLAW_BIN=<path-to-openclaw-binary>
 Environment=RELAY_OPENCLAW_CONFIG=<path-to-restricted-openclaw-config-json>
 Environment=RELAY_OPENCLAW_CWD=<openclaw-workspace-directory>

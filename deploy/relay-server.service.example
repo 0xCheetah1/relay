@@ -1,12 +1,12 @@
 [Unit]
-Description=RELAY agent call server (tailnet only)
-After=network-online.target tailscaled.service
+Description=RELAY agent call server (private network only)
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=%h/relay-server
-Environment=RELAY_HOST=<TAILSCALE_IP>
+Environment=RELAY_HOST=<private-bind-address>
 Environment=RELAY_PORT=8901
 Environment=RELAY_IDENTITY_DB=%h/.local/share/relay/identities.json
 Environment=RELAY_RING_MS=120000

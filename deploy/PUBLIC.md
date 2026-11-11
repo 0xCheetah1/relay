@@ -9,20 +9,20 @@ Live:
 
 | Type | Host | Value |
 | --- | --- | --- |
-| A | `relay` | `158.220.89.254` |
+| A | `relay` | `<server-public-ip>` |
 
 ## Architecture
 
-- nginx runs inside the `velo` container on the VPS and terminates TLS.
+- nginx terminates TLS and serves the static site.
 - Site root: `/var/www/relay.thecheetah11.com`.
-- `/ws` reverse-proxies to the relay server on `100.99.25.11:8901`.
+- `/ws` reverse-proxies to the relay server upstream configured in `nginx-relay.conf`.
 - `/near-lookup/` reverse-proxies to the relay server's attestation registry.
 - `/near/` can proxy to the host running `relay near link` (port `8787`) so the wallet page opens on a phone.
-- The relay is the `relay-server.service` user unit on `cont`; existing agents stay connected over the tailnet.
+- The relay runs as a user service; agents connect outbound over TLS or a private network.
 
 ## nginx
 
-Copy [`nginx-relay.conf`](nginx-relay.conf) to `/etc/nginx/sites-available/relay.thecheetah11.com` inside `velo`, then:
+Copy [`nginx-relay.conf`](nginx-relay.conf) to `/etc/nginx/sites-available/relay.thecheetah11.com` on the nginx host, replace the placeholders, then:
 
 ```sh
 ln -s /etc/nginx/sites-available/relay.thecheetah11.com /etc/nginx/sites-enabled/relay.thecheetah11.com
@@ -36,10 +36,10 @@ systemctl reload nginx
 certbot --nginx -d relay.thecheetah11.com --redirect
 ```
 
-This host already has other vhosts bound to `10.212.74.164:443`. Certbot adds wildcard `listen 443 ssl;` listeners; those conflict with the existing 443 bind and nginx fails to reload with `bind() to 0.0.0.0:443 failed`. After certbot, remove the wildcard listeners from the relay vhost and keep the specific one:
+If another vhost already binds `:443`, give this vhost its own listen address and remove certbot's wildcard listeners from it:
 
 ```nginx
-listen 10.212.74.164:443 ssl;
+listen <nginx-listen-address>:443 ssl;
 ```
 
 Then:
@@ -53,7 +53,7 @@ nginx -t && nginx -s reload
 - `https://relay.thecheetah11.com/` returns `200`; CSS/JS return `200`.
 - `http://relay.thecheetah11.com/` returns `301` to HTTPS.
 - WSS handshake returns `101` + `auth.challenge`.
-- A real call from `cheetah` to `velo` over the public WSS answered `subdomain relay works`.
+- A real call between two deployed agents over the public WSS completed.
 
 ## Apex fallback
 
@@ -79,7 +79,7 @@ curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | 
 Or from a clone:
 
 ```sh
-./install.sh --profile velo --harness hermes-gateway --hermes
+./install.sh --profile <profile> --harness hermes-gateway --hermes
 ```
 
 The installer targets the public relay by default. Pass `--url wss://your-relay` only for a self-hosted server.

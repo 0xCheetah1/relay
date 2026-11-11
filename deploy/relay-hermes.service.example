@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=%h/relay-client
 Environment=RELAY_PROFILE=<profile>
-Environment=RELAY_URL=ws://<TAILSCALE_IP>:8901
+Environment=RELAY_URL=wss://<relay-host>/ws
 Environment=RELAY_HERMES_A2A_URL=http://127.0.0.1:9900/
 Environment=RELAY_HERMES_BIN=%h/.local/bin/hermes
 Environment=RELAY_HERMES_TELEGRAM_SOCKET=%h/.config/relay/telegram.sock
