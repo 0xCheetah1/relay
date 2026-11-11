@@ -127,7 +127,7 @@ export function startWeb({ profileDir, profile, port = 8788, host = '127.0.0.1' 
         const task = String(body.task ?? '').trim();
         if (!target || !intent || !task) throw fail(400, 'Target, intent and task are required');
         try {
-          const result = await control({ action: 'dial', alias: target, intent, task, multi: true });
+          const result = await control({ action: 'dial', alias: target, intent, task, multi: true, ownerInitiated: true });
           if (!result.ok) throw fail(400, result.error ?? 'dial_failed');
           return sendJson(response, { ok: true, callId: result.callId, status: result.status ?? 'dialing' });
         } catch (error) {

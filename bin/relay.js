@@ -472,7 +472,7 @@ if (command === 'profiles') {
   if ((command === 'call' || command === 'ask') && existsSync(controlPath)) {
     const task = command === 'ask' ? args[1] : args[2];
     const intent = command === 'ask' ? task.slice(0, 160) : args[1];
-    const result = await sendDial(controlPath, { action: 'dial', alias: args[0], intent, task, multi, minTurns: turns });
+    const result = await sendDial(controlPath, { action: 'dial', alias: args[0], intent, task, multi, minTurns: turns, ownerInitiated: command === 'ask' });
     if (multi) {
       console.log(JSON.stringify({ callId: result.callId, status: result.status ?? 'dialing' }));
       process.exit(result.ok ? 0 : 1);
@@ -664,7 +664,7 @@ if (command === 'profiles') {
       const isId = /^rly_[0-9a-f-]{36}$/.test(alias);
       if (!client.contacts.has(alias) && !isId) return { ok: false, error: 'unknown_alias' };
       if (typeof intent !== 'string' || !intent.trim() || typeof task !== 'string' || !task.trim()) return { ok: false, error: 'invalid_dial' };
-      const callId = await client.dial(alias, { intent: intent.slice(0, 160), task: task.slice(0, 2000), minTurns: request.minTurns });
+      const callId = await client.dial(alias, { intent: intent.slice(0, 160), task: task.slice(0, 2000), minTurns: request.minTurns, ownerInitiated: request.ownerInitiated === true });
       startCallRecord(callId, { direction: 'outgoing', peer: client.contacts.get(alias) ?? (isId ? alias : undefined), peerAlias: isId ? null : alias, intent, task });
       if (request.multi) return { ok: true, callId, status: 'dialing' };
       const outcome = await waitForCallOutcome(client, callId);
