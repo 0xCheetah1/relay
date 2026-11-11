@@ -189,10 +189,19 @@ for target in "${TARGETS[@]}"; do
   "$RELAY_BIN" config set-url "$URL"
   echo "RELAY ID ($target_harness/$target_profile): $("$RELAY_BIN" id)"
 
+  HERMES_ENV=""
   if [ "$target_harness" = "openclaw" ]; then
     copy_openclaw_plugin "$target_profile"
   elif [ "$target_harness" = "hermes-gateway" ]; then
     copy_hermes_plugin "$target_profile"
+    mkdir -p "$HOME/.config/relay"
+    if [ ! -s "$HOME/.config/relay/hermes-webhook.key" ]; then
+      node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" > "$HOME/.config/relay/hermes-webhook.key"
+      chmod 600 "$HOME/.config/relay/hermes-webhook.key"
+    fi
+    HERMES_ENV="Environment=RELAY_HERMES_TELEGRAM_SOCKET=%h/.config/relay/telegram.sock
+Environment=RELAY_HERMES_WEBHOOK_URL=http://127.0.0.1:8644/webhooks/relay-incoming
+Environment=RELAY_HERMES_WEBHOOK_SECRET_FILE=%h/.config/relay/hermes-webhook.key"
   fi
 
   UNIT="$HOME/.config/systemd/user/relay-$target_profile.service"
@@ -209,6 +218,7 @@ WorkingDirectory=$INSTALL_DIR
 Environment=RELAY_PROFILE=$target_profile
 Environment=RELAY_URL=$URL
 Environment=RELAY_HEADLESS=1
+$HERMES_ENV
 ExecStart=$RELAY_BIN bridge $target_harness
 Restart=always
 RestartSec=5
