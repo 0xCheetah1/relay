@@ -42,6 +42,7 @@ function renderHeader(state) {
   $('#dnd').className = `pill ${state.dnd ? 'warn' : 'ok'}`;
   const toggle = $('#dnd-toggle');
   toggle.textContent = state.dnd ? 'DND on' : 'DND off';
+  toggle.setAttribute('aria-pressed', String(Boolean(state.dnd)));
   toggle.classList.toggle('warn', Boolean(state.dnd));
   const near = $('#near');
   if (state.near) {
@@ -277,6 +278,7 @@ $('#dnd-toggle').addEventListener('click', async () => {
       method: 'POST',
       body: JSON.stringify({ dnd: !currentState.dnd }),
     });
+    if (result.ok === false) throw new Error(result.error ?? 'Could not change DND');
     currentState.dnd = Boolean(result.dnd);
     renderHeader(currentState);
     await refreshBridge();

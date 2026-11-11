@@ -22,7 +22,7 @@ function readJson(request) {
 }
 
 function sendJson(response, value, status = 200) {
-  response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   response.end(JSON.stringify(value));
 }
 
@@ -84,7 +84,7 @@ export function startWeb({ profileDir, profile, port = 8788, host = '127.0.0.1' 
     try {
       if (request.method === 'GET' && files[url.pathname]) {
         const [name, type] = files[url.pathname];
-        response.writeHead(200, { 'Content-Type': type });
+        response.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' });
         response.end(readFileSync(new URL(`./web/${name}`, import.meta.url)));
         return;
       }
