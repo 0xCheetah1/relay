@@ -123,11 +123,20 @@ function renderPending(payload) {
     return;
   }
   setBridge(true, payload.dnd);
-  const list = Array.isArray(payload.pending) ? payload.pending : [];
+  const now = Date.now();
+  const list = (Array.isArray(payload.pending) ? payload.pending : [])
+    .filter((call) => !call.deadline || call.deadline > now);
+  if (list.length === 0) {
+    pendingSignature = '';
+    $('#incoming-card').style.display = 'none';
+    $('#incoming-count').textContent = '';
+    $('#incoming-list').innerHTML = '';
+    return;
+  }
   const signature = list.map((call) => `${call.callId}:${call.code ?? ''}`).join('|');
   if (signature === pendingSignature) return;
   pendingSignature = signature;
-  $('#incoming-card').style.display = list.length ? 'block' : 'none';
+  $('#incoming-card').style.display = 'block';
   $('#incoming-count').textContent = list.length ? `${list.length} waiting` : '';
   $('#incoming-list').innerHTML = list.map((call) => `
     <article class="incoming">
@@ -320,7 +329,9 @@ $('#incoming-list').addEventListener('click', async (event) => {
       method: 'POST',
       body: JSON.stringify({ callId: button.dataset.callId, code: button.dataset.code }),
     });
-    pendingSignature = '';
+    $('#incoming-card').style.display = 'none';
+    $('#incoming-count').textContent = '';
+    $('#incoming-list').innerHTML = '';
     await refreshPending();
     await refresh();
   } catch (error) {
