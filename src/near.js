@@ -101,7 +101,6 @@ export async function verifyAttestation(attestation, { checkKey = accountHasKey,
   let parsed;
   try { parsed = JSON.parse(attestation.message); } catch { return { ok: false, error: 'invalid_message' }; }
   if (parsed.account && parsed.account !== attestation.account) return { ok: false, error: 'account_mismatch' };
-  if (attestation.expiresAt && Date.parse(attestation.expiresAt) < Date.now()) return { ok: false, error: 'expired' };
   const nonce = Buffer.from(parsed.nonce ?? attestation.nonce ?? '', 'base64');
   if (nonce.length !== 32) return { ok: false, error: 'invalid_nonce' };
   const payload = nep413Payload({ message: attestation.message, recipient: attestation.recipient ?? 'relay', nonce });

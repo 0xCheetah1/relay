@@ -196,7 +196,7 @@ relay near show
 relay near verify ~/.config/relay/<profile>-near.json
 ```
 
-Attestations are valid for 30 days; re-run `relay near link` to refresh one.
+Attestations persist until you re-link; re-running `relay near link` replaces the saved attestation.
 
 The attestation is off-chain: no contract, no gas, no transaction. The server verifies the Ed25519 signature over the NEP-413 payload and checks the public key against the account on mainnet.
 

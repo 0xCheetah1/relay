@@ -208,7 +208,7 @@ if (command === 'profiles') {
     if (!existsSync(nearPath)) console.log('No NEAR attestation saved. Run: relay near link');
     else {
       const data = JSON.parse(readFileSync(nearPath, 'utf8'));
-      console.log(JSON.stringify({ account: data.account, relayId: data.relayId, publicKey: data.publicKey, expiresAt: data.expiresAt }, null, 2));
+      console.log(JSON.stringify({ account: data.account, relayId: data.relayId, publicKey: data.publicKey }, null, 2));
     }
   } else if (args[0] === 'verify' && args[1]) {
     const data = JSON.parse(readFileSync(resolve(args[1]), 'utf8'));
@@ -218,7 +218,6 @@ if (command === 'profiles') {
   } else if (args[0] === 'link') {
     const nonce = randomBytes(32);
     const issuedAt = new Date().toISOString();
-    const expiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
     const timeoutMs = Number(process.env.RELAY_NEAR_TIMEOUT_MS ?? String(10 * 60 * 1000));
     let linkExpiresAt = timeoutMs > 0 ? new Date(Date.now() + timeoutMs).toISOString() : null;
     const template = {
@@ -228,7 +227,6 @@ if (command === 'profiles') {
       encryptionKey: value.identity.encryptionPublicKey,
       capabilities: ['text', 'multi-turn'],
       issuedAt,
-      expiresAt,
       linkExpiresAt,
       recipient: process.env.RELAY_NEAR_RECIPIENT ?? 'relay.near',
       nonce: nonce.toString('base64'),

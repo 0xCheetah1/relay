@@ -378,7 +378,6 @@ signBtn.onclick = async () => {
       encryptionKey: template.encryptionKey,
       capabilities: template.capabilities,
       issuedAt: template.issuedAt,
-      expiresAt: template.expiresAt,
       nonce: template.nonce,
     });
     const result = await wallet.signMessage({ message, recipient: template.recipient, nonce });
