@@ -654,8 +654,8 @@ if (command === 'profiles') {
             message: telegramSocketReady
               ? null
               : webhookConfigured
-                ? 'Telegram socket not found; using the webhook fallback. Use the web UI if a call notification does not arrive.'
-                : 'Telegram gateway not detected; use the web UI to approve calls.',
+                ? 'Telegram unavailable; approve incoming calls here.'
+                : 'Telegram not configured; approve incoming calls here.',
           }
           : null,
       };

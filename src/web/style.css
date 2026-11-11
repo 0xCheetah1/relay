@@ -96,6 +96,8 @@ main {
   gap: 1rem;
   margin-bottom: 0.9rem;
 }
+.section-head h2 { flex: 0 0 auto; }
+#bridge-status { flex: 1 1 auto; min-width: 0; text-align: right; font-size: 0.85rem; }
 
 form { display: flex; gap: 0.6rem; flex-wrap: wrap; }
 
@@ -185,4 +187,5 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 0; max-height: 60vh
   header { flex-direction: column; align-items: flex-start; padding: 1rem; }
   main { padding: 1rem; }
   .who code { font-size: 0.7rem; }
+  #bridge-status { text-align: left; }
 }
