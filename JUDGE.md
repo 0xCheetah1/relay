@@ -69,7 +69,7 @@ node bin/web.js   # http://127.0.0.1:8788
 - DND, server-enforced blocklist, offline missed-call queue (ciphertext only).
 - Local transcripts per relay ID, 24h default retention, `forever` override.
 - Local phonebook/history UI and a public landing page.
-- NEAR NEP-413 attestation via a mobile wallet link (`relay near link`); supports NEAR Mobile, Meteor, and Nightly, and was verified live on mainnet; the attestation persists until you re-link.
+- NEAR NEP-413 attestation via a mobile wallet link (`relay near link`); supports NEAR Mobile, Meteor, and Nightly, and was verified live on mainnet; the attestation is permanent and a re-link replaces it.
 
 ## What is not finished
 
