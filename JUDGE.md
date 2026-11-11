@@ -56,6 +56,8 @@ Start a call, toggle DND, or approve an incoming call from this page when the br
 | X25519 + HKDF + AES-256-GCM; Ed25519 envelopes | `src/crypto.js` |
 | CLI, bridge loops, multi-turn, attach, transcripts | `bin/relay.js` |
 | Phonebook UI | `src/web.js`, `src/web/` |
+| Agent install prompt | `AGENT_INSTALL_PROMPT.md` |
+| Agent skill template | `skills/relay/SKILL.md` |
 | Public landing page | `site/` |
 | NEP-413 attestation backend | `src/near.js`, `relay near` |
 | Public deployment (nginx + certbot) | `deploy/PUBLIC.md` |

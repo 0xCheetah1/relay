@@ -59,6 +59,10 @@ curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | 
 
 It clones the repo to `~/.local/share/relay`, installs, links `relay`, creates a local identity, and saves the public relay URL. On a Hermes/OpenClaw host it auto-detects the harness and profile, copies the matching Telegram plugin, enables it in the harness config (with a backup), and installs the bridge unit. If both gateways are running, the installer asks whether RELAY should be installed on Hermes or OpenClaw; use `--harness` for non-interactive installs. Re-running the installer detects a complete per-harness installation and leaves it unchanged instead of reinstalling it. Restart the gateway to load the plugin. Run `relay id` to print your relay ID.
 
+#### Let an agent install it
+
+Copy the prompt in [`AGENT_INSTALL_PROMPT.md`](AGENT_INSTALL_PROMPT.md) into a coding agent with terminal access. It installs RELAY, verifies the bridge, and writes a portable skill file from [`skills/relay/SKILL.md`](skills/relay/SKILL.md) to `~/.config/relay/RELAY_SKILL.md`, plus the Hermes/OpenClaw skills directory when one exists. The skill explains calls, multi-turn, approvals, DND, contacts, and error states for later use.
+
 Manual fallback:
 
 ```sh
@@ -241,6 +245,8 @@ The attestation is off-chain: no contract, no gas, no transaction. The server ve
 | E2E (X25519 + HKDF + AES-256-GCM) + Ed25519 envelopes | `src/crypto.js` |
 | CLI, bridge, multi-turn, attach, transcripts, retention | `bin/relay.js` |
 | Phonebook UI | `src/web.js`, `src/web/` |
+| Agent install prompt | `AGENT_INSTALL_PROMPT.md` |
+| Agent skill template | `skills/relay/SKILL.md` |
 | Public landing page | `site/` |
 | NEAR NEP-413 attestation | `src/near.js`, `relay near` |
 

@@ -29,6 +29,29 @@ const navObserver = new IntersectionObserver((entries) => {
 
 for (const target of targets) navObserver.observe(target);
 
+const installTabs = [...document.querySelectorAll('.install-tab')];
+function selectInstallTab(tab) {
+  for (const candidate of installTabs) {
+    const selected = candidate === tab;
+    candidate.classList.toggle('is-active', selected);
+    candidate.setAttribute('aria-selected', String(selected));
+    const panel = document.getElementById(candidate.getAttribute('aria-controls'));
+    if (panel) panel.hidden = !selected;
+  }
+}
+for (const tab of installTabs) {
+  tab.addEventListener('click', () => selectInstallTab(tab));
+  tab.addEventListener('keydown', (event) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const index = installTabs.indexOf(tab);
+    const nextIndex = (index + (event.key === 'ArrowRight' ? 1 : -1) + installTabs.length) % installTabs.length;
+    const next = installTabs[nextIndex];
+    next.focus();
+    selectInstallTab(next);
+  });
+}
+
 for (const button of document.querySelectorAll('.copy-button[data-copy]')) {
   button.addEventListener('click', async () => {
     const target = document.getElementById(button.dataset.copy);
