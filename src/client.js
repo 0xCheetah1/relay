@@ -133,7 +133,7 @@ export class RelayClient extends EventEmitter {
   }
 
   async dial(alias, { intent, task, ownerInitiated = false, minTurns = 1 } = {}) {
-    const to = this.contacts.get(alias);
+    const to = this.contacts.get(alias) ?? (/^rly_[0-9a-f-]{36}$/.test(alias) ? alias : null);
     if (!to) throw new Error(`Unknown contact: ${alias}`);
     const peer = await this.getKeys(to);
     if (!peer.encryption) throw new Error('Peer has no encryption key (not an E2E build)');

@@ -477,11 +477,20 @@ if (command === 'profiles') {
       console.log(JSON.stringify({ callId: result.callId, status: result.status ?? 'dialing' }));
       process.exit(result.ok ? 0 : 1);
     }
-    if (command === 'ask') {
-      if (result.ok) console.log(result.result);
-      else console.error(`Call ${result.status ?? 'failed'}: ${describeReason(result.reason ?? result.error)}`);
-    } else console.log(JSON.stringify({ callId: result.callId, status: result.status, reason: result.reason, message: result.reason ? describeReason(result.reason) : null, result: result.result }));
-    if (!result.ok) process.exitCode = 1;
+    if (!result.ok) {
+      console.error(JSON.stringify({
+        ok: false,
+        error: result.error ?? result.reason ?? 'dial_failed',
+        callId: result.callId ?? null,
+        status: result.status ?? null,
+        reason: result.reason ?? null,
+        message: result.error ? `Call failed: ${result.error}` : (result.reason ? describeReason(result.reason) : null),
+        result: result.result ?? null,
+      }));
+      process.exit(1);
+    }
+    if (command === 'ask') console.log(result.result);
+    else console.log(JSON.stringify({ callId: result.callId, status: result.status, reason: result.reason, message: result.reason ? describeReason(result.reason) : null, result: result.result }));
     process.exit();
   }
   const url = process.env.RELAY_URL ?? value.url ?? 'ws://127.0.0.1:8901';
@@ -543,6 +552,13 @@ if (command === 'profiles') {
   const callReports = new Map();
   const attachers = new Map();
   const ownerIds = new Set((process.env.RELAY_OWNER_IDS ?? '').split(',').map((id) => id.trim()).filter(Boolean));
+  function reloadContacts() {
+    const latest = store.load();
+    for (const [alias, id] of Object.entries(latest.contacts ?? {})) {
+      client.addContact(alias, id);
+      aliases.set(id, alias);
+    }
+  }
 
   function startCallRecord(callId, { direction, peer, peerAlias, intent, task }) {
     callRecords.set(callId, {
@@ -613,11 +629,13 @@ if (command === 'profiles') {
       return { ok: false, error: 'invalid_decision' };
     }
     if (request.action === 'dial') {
+      reloadContacts();
       const { alias, intent, task } = request;
-      if (!client.contacts.has(alias)) return { ok: false, error: 'unknown_alias' };
+      const isId = /^rly_[0-9a-f-]{36}$/.test(alias);
+      if (!client.contacts.has(alias) && !isId) return { ok: false, error: 'unknown_alias' };
       if (typeof intent !== 'string' || !intent.trim() || typeof task !== 'string' || !task.trim()) return { ok: false, error: 'invalid_dial' };
       const callId = await client.dial(alias, { intent: intent.slice(0, 160), task: task.slice(0, 2000), minTurns: request.minTurns });
-      startCallRecord(callId, { direction: 'outgoing', peer: client.contacts.get(alias), peerAlias: alias, intent, task });
+      startCallRecord(callId, { direction: 'outgoing', peer: client.contacts.get(alias) ?? (isId ? alias : undefined), peerAlias: isId ? null : alias, intent, task });
       if (request.multi) return { ok: true, callId, status: 'dialing' };
       const outcome = await waitForCallOutcome(client, callId);
       return { ok: outcome.status === 'completed', callId, status: outcome.status, reason: outcome.reason, result: outcome.result };
@@ -738,6 +756,7 @@ if (command === 'profiles') {
     if (!dnd) flushMissed();
   });
   client.on('call.ringing', (event) => {
+    reloadContacts();
     const { callId, from, intent, task, ownerInitiated } = event;
     const trusted = ownerIds.has(from) || aliases.has(from);
     if (blocked.has(from)) {
