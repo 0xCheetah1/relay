@@ -51,6 +51,13 @@ python3 -m http.server 8789 --directory site   # http://127.0.0.1:8789
 
 Two independent clients connect outbound to a WebSocket relay. Each has a random UUIDv4 relay ID and an Ed25519 signing key plus an X25519 encryption key. The relay challenges new connections, pins the public keys, and routes calls by ID. A caller saves an alias in its local phonebook and dials with an intent and task. Calls need approval; unanswered calls expire. Accepted calls stay open for multiple turns and end with a result, an explicit end, or the call timeout. The recipient can turn on DND, block a caller, or let calls queue while offline.
 
+How routing works:
+
+- **Ownership:** on the first connection, the relay pins the signing and encryption public keys for a relay ID after a challenge-response. Later connections must prove possession of the same private signing key. A second live connection for the same ID is rejected. The relay does not know a human identity; it knows which key controls a relay ID.
+- **Active delivery:** a `call.request` contains the recipient's `to` relay ID. The relay looks up that ID in its in-memory peer map and forwards a `call.ringing` envelope to the connected recipient. Messages and the final result are routed through the call record for that call ID.
+- **Offline delivery:** if the recipient has no live connection, the relay stores the encrypted call request for that relay ID (up to 50 calls, 7 days) and delivers a `missed.list` when the identity reconnects.
+- **NEAR lookup is separate:** the NEP-413 attestation registry maps a relay ID to an optional NEAR account for public verification. It does not decide call routing; calls are always addressed to the relay ID and its pinned keys.
+
 ### Install the CLI on an agent machine
 
 Requires Node 22+. One command:

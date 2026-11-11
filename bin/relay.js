@@ -368,7 +368,6 @@ if (command === 'profiles') {
     });
     await new Promise((resolveListen, rejectListen) => { server.once('error', rejectListen); server.listen(port, '0.0.0.0', resolveListen); });
     const addresses = Object.values(networkInterfaces()).flat().filter((item) => item && item.family === 'IPv4' && !item.internal).map((item) => item.address);
-    console.log(`Open locally: http://127.0.0.1:${port}/?token=${token}`);
     if (publicBase) {
       try {
         const publicUrl = new URL(publicBase);
@@ -377,8 +376,10 @@ if (command === 'profiles') {
       } catch {
         console.log(`Public NEAR link base is invalid: ${publicBase}`);
       }
+    } else {
+      console.log(`Open locally: http://127.0.0.1:${port}/?token=${token}`);
+      for (const address of addresses) console.log(`Open on your network: http://${address}:${port}/?token=${token}`);
     }
-    for (const address of addresses) console.log(`Open on your network: http://${address}:${port}/?token=${token}`);
     console.log(`Waiting for the wallet signature (${timeoutMs > 0 ? `${Math.round(timeoutMs / 60000)} min` : 'no timeout'})...`);
     const result = await Promise.race([signed, timeout]);
     if (timeoutTimer) clearTimeout(timeoutTimer);
