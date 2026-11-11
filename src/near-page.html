@@ -290,6 +290,7 @@ const signBtn = document.getElementById('sign');
 const accountLine = document.getElementById('account-line');
 let wallet = null;
 let template = null;
+let linked = false;
 
 const setStatus = (kind, text) => {
   out.className = 'status' + (kind ? ' ' + kind : '');
@@ -305,6 +306,7 @@ try {
       : Date.parse(template.linkExpiresAt) - Date.now();
     const startedAt = performance.now();
     const tick = () => {
+      if (linked) return;
       const left = ttlMs - (performance.now() - startedAt);
       if (left <= 0) {
         expiry.textContent = 'expired';
@@ -399,6 +401,8 @@ signBtn.onclick = async () => {
     });
     const data = await response.json();
     if (!data.ok) throw new Error(data.error || 'Signature rejected');
+    linked = true;
+    expiry.textContent = 'linked · link consumed';
     setStatus('ok', '✅ Linked ' + result.accountId);
     signBtn.textContent = 'Linked';
     signBtn.disabled = true;
