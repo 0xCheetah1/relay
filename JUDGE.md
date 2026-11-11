@@ -45,6 +45,8 @@ Local phonebook UI:
 node bin/web.js   # http://127.0.0.1:8788
 ```
 
+Start a call, toggle DND, or approve an incoming call from this page when the bridge is running. The page uses the local bridge control socket, so the call and approval rules are unchanged.
+
 ## What to look at
 
 | Area | File |

@@ -39,6 +39,8 @@ Local phonebook (writes your local profile only):
 node bin/web.js     # http://127.0.0.1:8788
 ```
 
+The phonebook can place calls, toggle DND, and show incoming calls with Accept/Reject while the local bridge is running. It talks to the bridge over its control socket; the call itself still runs through the bridge and its normal approval path.
+
 Public landing page:
 
 ```sh

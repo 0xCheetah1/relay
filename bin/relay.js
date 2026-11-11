@@ -618,6 +618,36 @@ if (command === 'profiles') {
   }
   const closeControl = harness ? await startApprovalSocket(controlPath, async (request) => {
     if (request.action === 'ping') return { ok: true };
+    if (request.action === 'pending') {
+      const list = [...pending.entries()].map(([callId, call]) => ({
+        callId,
+        from: call.from,
+        alias: aliases.get(call.from) ?? null,
+        intent: call.intent,
+        task: call.task,
+        deadline: call.deadline ?? null,
+        code: notificationCodes.get(callId)?.code ?? null,
+      }));
+      return { ok: true, dnd, pending: list };
+    }
+    if (request.action === 'dnd') {
+      if (typeof request.dnd !== 'boolean') return { ok: false, error: 'invalid_dnd' };
+      dnd = request.dnd;
+      client.setDnd(dnd);
+      const value = state();
+      value.dnd = dnd;
+      store.save(value);
+      return { ok: true, dnd };
+    }
+    if (request.action === 'status') return { ok: true, dnd, pending: pending.size };
+    if (request.action === 'callStatus') {
+      if (typeof request.callId !== 'string') return { ok: false, error: 'invalid_call_id' };
+      const record = callRecords.get(request.callId);
+      if (record) return { ok: true, callId: request.callId, status: record.status ?? 'dialing', reason: record.reason ?? null, result: record.result ?? null };
+      const saved = (historyStore.load().records ?? []).find((item) => item.callId === request.callId);
+      if (saved) return { ok: true, callId: request.callId, status: saved.status, reason: saved.reason ?? null, result: saved.result ?? null };
+      return { ok: true, callId: request.callId, status: 'unknown' };
+    }
     if (request.action === 'accept' || request.action === 'reject') {
       console.log(`Approval ${request.action} for ${request.callId}`);
       const pendingCall = pending.get(request.callId);

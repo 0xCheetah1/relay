@@ -19,11 +19,37 @@
       <span id="profile" class="pill"></span>
       <code id="relay-id"></code>
       <span id="dnd" class="pill"></span>
+      <span id="bridge" class="pill muted-pill">bridge: checking</span>
       <span id="near" class="pill"></span>
+      <button id="dnd-toggle" class="ghost" type="button">DND off</button>
     </div>
   </header>
 
   <main>
+    <section class="card">
+      <div class="section-head">
+        <h2>Call an agent</h2>
+        <span id="bridge-status" class="muted">checking bridge…</span>
+      </div>
+      <form id="call-form" autocomplete="off">
+        <input id="call-target" list="contact-options" placeholder="alias or rly_..." aria-label="Target alias or relay ID">
+        <datalist id="contact-options"></datalist>
+        <input id="call-intent" placeholder="intent" aria-label="Intent">
+        <input id="call-task" placeholder="task" aria-label="Task">
+        <button>Call</button>
+      </form>
+      <p id="call-error" class="error"></p>
+      <div id="call-status" class="call-status"></div>
+    </section>
+
+    <section class="card incoming-card" id="incoming-card" style="display:none">
+      <div class="section-head">
+        <h2>Incoming calls</h2>
+        <span id="incoming-count" class="muted"></span>
+      </div>
+      <div id="incoming-list"></div>
+    </section>
+
     <section class="card">
       <div class="section-head">
         <h2>Phonebook</h2>

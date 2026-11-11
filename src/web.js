@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { jsonStore } from './store.js';
+import { sendControl } from './notifications.js';
 
 const MAX_BODY = 64 * 1024;
 
@@ -32,6 +33,9 @@ function fail(status, message) {
 export function startWeb({ profileDir, profile, port = 8788, host = '127.0.0.1' } = {}) {
   const store = jsonStore(join(profileDir, `${profile}.json`));
   const historyStore = jsonStore(join(profileDir, `${profile}-history.json`));
+  const controlPath = join(profileDir, `${profile}.sock`);
+  const control = (request) => sendControl(controlPath, request);
+  const bridgeOffline = (error) => error?.code === 'ECONNREFUSED' || error?.code === 'ENOENT';
 
   function state() {
     const value = store.load();
@@ -85,6 +89,75 @@ export function startWeb({ profileDir, profile, port = 8788, host = '127.0.0.1' 
         return;
       }
       if (request.method === 'GET' && url.pathname === '/api/state') return sendJson(response, summary());
+      if (request.method === 'GET' && url.pathname === '/api/bridge') {
+        try {
+          const result = await control({ action: 'status' });
+          return sendJson(response, result);
+        } catch (error) {
+          if (bridgeOffline(error)) return sendJson(response, { ok: false, error: 'bridge_offline' });
+          throw error;
+        }
+      }
+      if (request.method === 'GET' && url.pathname === '/api/pending') {
+        try {
+          const result = await control({ action: 'pending' });
+          return sendJson(response, result);
+        } catch (error) {
+          if (bridgeOffline(error)) return sendJson(response, { ok: false, error: 'bridge_offline', pending: [] });
+          throw error;
+        }
+      }
+      if (request.method === 'POST' && url.pathname === '/api/dnd') {
+        const body = await readJson(request);
+        const dnd = Boolean(body.dnd);
+        try {
+          return sendJson(response, await control({ action: 'dnd', dnd }));
+        } catch (error) {
+          if (!bridgeOffline(error)) throw error;
+          const value = state();
+          value.dnd = dnd;
+          store.save(value);
+          return sendJson(response, { ok: true, dnd, bridge: false });
+        }
+      }
+      if (request.method === 'POST' && url.pathname === '/api/call') {
+        const body = await readJson(request);
+        const target = String(body.target ?? '').trim();
+        const intent = String(body.intent ?? '').trim();
+        const task = String(body.task ?? '').trim();
+        if (!target || !intent || !task) throw fail(400, 'Target, intent and task are required');
+        try {
+          const result = await control({ action: 'dial', alias: target, intent, task, multi: true });
+          if (!result.ok) throw fail(400, result.error ?? 'dial_failed');
+          return sendJson(response, { ok: true, callId: result.callId, status: result.status ?? 'dialing' });
+        } catch (error) {
+          if (bridgeOffline(error)) throw fail(503, 'bridge_offline');
+          throw error;
+        }
+      }
+      if (request.method === 'GET' && url.pathname.startsWith('/api/call/')) {
+        const callId = decodeURIComponent(url.pathname.slice('/api/call/'.length));
+        if (!/^[0-9a-f-]{36}$/.test(callId)) throw fail(400, 'Invalid call ID');
+        try {
+          return sendJson(response, await control({ action: 'callStatus', callId }));
+        } catch (error) {
+          if (bridgeOffline(error)) throw fail(503, 'bridge_offline');
+          throw error;
+        }
+      }
+      if (request.method === 'POST' && (url.pathname === '/api/accept' || url.pathname === '/api/reject')) {
+        const body = await readJson(request);
+        const callId = String(body.callId ?? '');
+        const code = String(body.code ?? '');
+        if (!/^[0-9a-f-]{36}$/.test(callId)) throw fail(400, 'Invalid call ID');
+        try {
+          const action = url.pathname === '/api/accept' ? 'accept' : 'reject';
+          return sendJson(response, await control({ action, callId, code }));
+        } catch (error) {
+          if (bridgeOffline(error)) throw fail(503, 'bridge_offline');
+          throw error;
+        }
+      }
       if (request.method === 'POST' && url.pathname === '/api/contacts') {
         const body = await readJson(request);
         const value = state();
