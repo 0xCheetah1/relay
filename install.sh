@@ -7,9 +7,9 @@ set -euo pipefail
 #   ./install.sh --profile velo --harness hermes-gateway --hermes
 #
 # Flags:
-#   --profile <name>     RELAY profile (default: $RELAY_PROFILE or "default")
+#   --profile <name>     RELAY profile (default: $RELAY_PROFILE, detected from the gateway, or "default")
 #   --url <ws(s)://...>  relay server URL (default: $RELAY_URL or the public relay)
-#   --harness <name>     hermes-gateway | openclaw (optional; installs a user bridge service)
+#   --harness <name>     hermes-gateway | openclaw (default: auto-detected)
 #   --openclaw           copy the OpenClaw Telegram approval plugin
 #   --hermes             copy the Hermes Telegram approval plugin
 #   --dir <path>         install directory (default: ~/.local/share/relay)
@@ -17,7 +17,7 @@ set -euo pipefail
 # The script never edits your harness config. It prints the exact keys to add.
 
 REPO_URL="${RELAY_REPO_URL:-https://github.com/0xCheetah1/relay.git}"
-PROFILE="${RELAY_PROFILE:-default}"
+PROFILE="${RELAY_PROFILE:-}"
 URL="${RELAY_URL:-wss://relay.thecheetah11.com/ws}"
 HARNESS=""
 INSTALL_DIR="${RELAY_INSTALL_DIR:-$HOME/.local/share/relay}"
@@ -36,6 +36,51 @@ while [ $# -gt 0 ]; do
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
 done
+
+# Detect the harness and the profile the gateway already uses, so the one-liner
+# works without flags on a Hermes or OpenClaw host.
+if [ -z "$HARNESS" ]; then
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl --user is-active --quiet openclaw-gateway.service 2>/dev/null && [ -d "$HOME/.openclaw" ]; then
+      HARNESS=openclaw
+    elif systemctl --user is-active --quiet hermes-gateway.service 2>/dev/null && [ -d "$HOME/.hermes" ]; then
+      HARNESS=hermes-gateway
+    fi
+  fi
+  if [ -z "$HARNESS" ]; then
+    if [ -d "$HOME/.openclaw" ] && [ ! -d "$HOME/.hermes" ]; then
+      HARNESS=openclaw
+    elif [ -d "$HOME/.hermes" ] && [ ! -d "$HOME/.openclaw" ]; then
+      HARNESS=hermes-gateway
+    elif [ -d "$HOME/.hermes" ]; then
+      HARNESS=hermes-gateway
+    elif [ -d "$HOME/.openclaw" ]; then
+      HARNESS=openclaw
+    fi
+  fi
+fi
+
+if [ -z "$PROFILE" ]; then
+  case "$HARNESS" in
+    hermes-gateway) SERVICES="hermes-gateway openclaw-gateway" ;;
+    openclaw) SERVICES="openclaw-gateway hermes-gateway" ;;
+    *) SERVICES="hermes-gateway openclaw-gateway" ;;
+  esac
+  for service in $SERVICES; do
+    value="$(systemctl --user show "$service" -p Environment --value 2>/dev/null || true)"
+    detected="$(printf '%s\n' "$value" | tr ' ' '\n' | sed -n 's/^RELAY_PROFILE=//p' | head -1)"
+    if [ -n "$detected" ]; then PROFILE="$detected"; break; fi
+  done
+fi
+[ -n "$PROFILE" ] || PROFILE=default
+
+if [ "$HARNESS" = "openclaw" ] && [ "$COPY_OPENCLAW" -eq 0 ] && [ "$COPY_HERMES" -eq 0 ]; then
+  COPY_OPENCLAW=1
+fi
+if [ "$HARNESS" = "hermes-gateway" ] && [ "$COPY_OPENCLAW" -eq 0 ] && [ "$COPY_HERMES" -eq 0 ]; then
+  COPY_HERMES=1
+fi
+echo "Detected harness: ${HARNESS:-none} (profile: $PROFILE)"
 
 if ! command -v node >/dev/null 2>&1; then
   echo "Node 22+ is required." >&2

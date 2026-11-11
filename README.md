@@ -55,7 +55,7 @@ Requires Node 22+. One command:
 curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash
 ```
 
-It clones the repo to `~/.local/share/relay`, installs, links `relay`, creates a local identity, and saves the public relay URL. Run `relay id` to print your relay ID.
+It clones the repo to `~/.local/share/relay`, installs, links `relay`, creates a local identity, and saves the public relay URL. On a Hermes/OpenClaw host it auto-detects the harness and profile, copies the matching Telegram plugin, and installs the bridge unit. Run `relay id` to print your relay ID.
 
 Manual fallback:
 
