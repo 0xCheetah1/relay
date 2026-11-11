@@ -3,16 +3,15 @@ set -euo pipefail
 
 # RELAY installer
 #   curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash
-# or:
-#   ./install.sh --profile velo --harness hermes-gateway --hermes
 #
-# Flags:
-#   --profile <name>     RELAY profile (default: $RELAY_PROFILE, detected from the gateway, or "default")
+# Flags (all optional; the installer auto-detects Hermes/OpenClaw and the profile):
+#   --profile <name>     RELAY profile (default: detected from the gateway, or "default")
 #   --url <ws(s)://...>  relay server URL (default: $RELAY_URL or the public relay)
 #   --harness <name>     hermes-gateway | openclaw (default: auto-detected)
-#   --openclaw           copy the OpenClaw Telegram approval plugin
-#   --hermes             copy the Hermes Telegram approval plugin
+#   --openclaw           only install the OpenClaw bridge/plugin
+#   --hermes             only install the Hermes bridge/plugin
 #   --dir <path>         install directory (default: ~/.local/share/relay)
+#   --dry-run            print what would be installed, then exit
 #
 # The script never edits your harness config. It prints the exact keys to add.
 
@@ -21,6 +20,7 @@ PROFILE="${RELAY_PROFILE:-}"
 URL="${RELAY_URL:-wss://relay.thecheetah11.com/ws}"
 HARNESS=""
 INSTALL_DIR="${RELAY_INSTALL_DIR:-$HOME/.local/share/relay}"
+DRY_RUN=0
 COPY_OPENCLAW=0
 COPY_HERMES=0
 
@@ -32,55 +32,94 @@ while [ $# -gt 0 ]; do
     --dir) INSTALL_DIR="${2:?}"; shift 2 ;;
     --openclaw) COPY_OPENCLAW=1; shift ;;
     --hermes) COPY_HERMES=1; shift ;;
-    -h|--help) sed -n '3,20p' "$0"; exit 0 ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help) sed -n '3,18p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
 done
 
-# Detect the harness and the profile the gateway already uses, so the one-liner
-# works without flags on a Hermes or OpenClaw host.
-if [ -z "$HARNESS" ]; then
-  if command -v systemctl >/dev/null 2>&1; then
-    if systemctl --user is-active --quiet openclaw-gateway.service 2>/dev/null && [ -d "$HOME/.openclaw" ]; then
-      HARNESS=openclaw
-    elif systemctl --user is-active --quiet hermes-gateway.service 2>/dev/null && [ -d "$HOME/.hermes" ]; then
-      HARNESS=hermes-gateway
+gateway_profile() {
+  local service="$1" value detected
+  value="$(systemctl --user show "$service" -p Environment --value 2>/dev/null || true)"
+  detected="$(printf '%s\n' "$value" | tr ' ' '\n' | sed -n 's/^RELAY_PROFILE=//p' | head -1)"
+  printf '%s' "$detected"
+}
+
+TARGETS=()
+HERMES_ON=0
+OPENCLAW_ON=0
+
+if [ -n "$HARNESS" ]; then
+  case "$HARNESS" in
+    hermes-gateway|openclaw) ;;
+    *) echo "Unknown harness: $HARNESS (use hermes-gateway or openclaw)" >&2; exit 2 ;;
+  esac
+  selected_profile="$PROFILE"
+  [ -n "$selected_profile" ] || selected_profile="$(gateway_profile "$HARNESS")"
+  [ -n "$selected_profile" ] || selected_profile=default
+  TARGETS+=("$HARNESS|$selected_profile")
+else
+  if [ "$COPY_HERMES" -eq 1 ] || [ "$COPY_OPENCLAW" -eq 1 ]; then
+    [ "$COPY_HERMES" -eq 1 ] && HERMES_ON=1
+    [ "$COPY_OPENCLAW" -eq 1 ] && OPENCLAW_ON=1
+  else
+    if command -v systemctl >/dev/null 2>&1; then
+      if systemctl --user is-active --quiet hermes-gateway.service 2>/dev/null; then HERMES_ON=1; fi
+      if systemctl --user is-active --quiet openclaw-gateway.service 2>/dev/null; then OPENCLAW_ON=1; fi
+    fi
+    if [ "$HERMES_ON" -eq 0 ] && [ "$OPENCLAW_ON" -eq 0 ]; then
+      [ -d "$HOME/.hermes" ] && HERMES_ON=1
+      [ -d "$HOME/.openclaw" ] && OPENCLAW_ON=1
     fi
   fi
-  if [ -z "$HARNESS" ]; then
-    if [ -d "$HOME/.openclaw" ] && [ ! -d "$HOME/.hermes" ]; then
-      HARNESS=openclaw
-    elif [ -d "$HOME/.hermes" ] && [ ! -d "$HOME/.openclaw" ]; then
-      HARNESS=hermes-gateway
-    elif [ -d "$HOME/.hermes" ]; then
-      HARNESS=hermes-gateway
-    elif [ -d "$HOME/.openclaw" ]; then
-      HARNESS=openclaw
+
+  count=$((HERMES_ON + OPENCLAW_ON))
+  if [ "$count" -gt 1 ] && [ -n "$PROFILE" ]; then
+    echo "Both harnesses are present; omit --profile or use it with --harness." >&2
+    exit 2
+  fi
+
+  if [ "$HERMES_ON" -eq 1 ]; then
+    hp="$PROFILE"
+    [ -n "$hp" ] || hp="$(gateway_profile hermes-gateway)"
+    [ -n "$hp" ] || hp=default
+    TARGETS+=("hermes-gateway|$hp")
+  fi
+  if [ "$OPENCLAW_ON" -eq 1 ]; then
+    op="$PROFILE"
+    [ -n "$op" ] || op="$(gateway_profile openclaw-gateway)"
+    [ -n "$op" ] || op=default
+    TARGETS+=("openclaw|$op")
+  fi
+
+  if [ "${#TARGETS[@]}" -eq 2 ]; then
+    p1="${TARGETS[0]#*|}"
+    p2="${TARGETS[1]#*|}"
+    if [ "$p1" = "$p2" ]; then
+      TARGETS[0]="hermes-gateway|hermes"
+      TARGETS[1]="openclaw|openclaw"
+      echo "Both gateways report the same profile; using 'hermes' and 'openclaw'. Set RELAY_PROFILE in each gateway." >&2
     fi
   fi
 fi
 
-if [ -z "$PROFILE" ]; then
-  case "$HARNESS" in
-    hermes-gateway) SERVICES="hermes-gateway openclaw-gateway" ;;
-    openclaw) SERVICES="openclaw-gateway hermes-gateway" ;;
-    *) SERVICES="hermes-gateway openclaw-gateway" ;;
-  esac
-  for service in $SERVICES; do
-    value="$(systemctl --user show "$service" -p Environment --value 2>/dev/null || true)"
-    detected="$(printf '%s\n' "$value" | tr ' ' '\n' | sed -n 's/^RELAY_PROFILE=//p' | head -1)"
-    if [ -n "$detected" ]; then PROFILE="$detected"; break; fi
+if [ "${#TARGETS[@]}" -eq 0 ]; then
+  echo "No Hermes/OpenClaw harness detected; installing the CLI only."
+else
+  echo "Detected:"
+  for target in "${TARGETS[@]}"; do
+    IFS='|' read -r target_harness target_profile <<<"$target"
+    echo "  - $target_harness (profile: $target_profile)"
   done
 fi
-[ -n "$PROFILE" ] || PROFILE=default
 
-if [ "$HARNESS" = "openclaw" ] && [ "$COPY_OPENCLAW" -eq 0 ] && [ "$COPY_HERMES" -eq 0 ]; then
-  COPY_OPENCLAW=1
+if [ "$DRY_RUN" -eq 1 ]; then
+  for target in "${TARGETS[@]}"; do
+    IFS='|' read -r target_harness target_profile <<<"$target"
+    echo "DRY: profile $target_profile -> $target_harness plugin -> relay-$target_profile.service"
+  done
+  exit 0
 fi
-if [ "$HARNESS" = "hermes-gateway" ] && [ "$COPY_OPENCLAW" -eq 0 ] && [ "$COPY_HERMES" -eq 0 ]; then
-  COPY_HERMES=1
-fi
-echo "Detected harness: ${HARNESS:-none} (profile: $PROFILE)"
 
 if ! command -v node >/dev/null 2>&1; then
   echo "Node 22+ is required." >&2
@@ -106,65 +145,71 @@ npm ci --omit=dev --silent
 mkdir -p "$HOME/.local/bin"
 ln -sf "$INSTALL_DIR/bin/relay.js" "$HOME/.local/bin/relay"
 chmod +x "$INSTALL_DIR/bin/relay.js"
+RELAY_BIN="$HOME/.local/bin/relay"
 
-export RELAY_PROFILE="$PROFILE"
-if [ ! -f "$HOME/.config/relay/$PROFILE.json" ]; then
-  "$HOME/.local/bin/relay" init
-fi
-if [ -n "$URL" ]; then
-  "$HOME/.local/bin/relay" config set-url "$URL"
-fi
-echo "RELAY ID: $("$HOME/.local/bin/relay" id)"
-
-if [ "$COPY_OPENCLAW" -eq 1 ]; then
+copy_openclaw_plugin() {
+  local target_profile="$1"
   mkdir -p "$HOME/.openclaw/extensions/relay-telegram"
   cp -R "$INSTALL_DIR/adapters/openclaw/telegram-plugin/." "$HOME/.openclaw/extensions/relay-telegram/"
   cat <<EOF
 
-OpenClaw plugin copied. Add to ~/.openclaw/openclaw.json:
+OpenClaw plugin copied (profile: $target_profile). Add to ~/.openclaw/openclaw.json:
   plugins.allow:       include "relay-telegram"
   plugins.entries:     "relay-telegram": { "enabled": true }
   channels.telegram.capabilities.inlineButtons: "all"
 Gateway environment:
-  RELAY_PROFILE=$PROFILE
+  RELAY_PROFILE=$target_profile
   RELAY_OPENCLAW_TELEGRAM_OWNER=<your telegram numeric id>
-  RELAY_OPENCLAW_APPROVAL_SOCKET=\$HOME/.config/relay/$PROFILE.sock
+  RELAY_OPENCLAW_APPROVAL_SOCKET=\$HOME/.config/relay/$target_profile.sock
 Then restart the Gateway.
 EOF
-fi
+}
 
-if [ "$COPY_HERMES" -eq 1 ]; then
+copy_hermes_plugin() {
+  local target_profile="$1"
   mkdir -p "$HOME/.hermes/plugins/relay-telegram"
   cp -R "$INSTALL_DIR/adapters/hermes/telegram-plugin/." "$HOME/.hermes/plugins/relay-telegram/"
   cat <<EOF
 
-Hermes plugin copied. Enable it in ~/.hermes/config.yaml, and set in the Hermes Gateway environment:
-  RELAY_PROFILE=$PROFILE
-  RELAY_APPROVAL_SOCKET=\$HOME/.config/relay/$PROFILE.sock
+Hermes plugin copied (profile: $target_profile). Enable it in ~/.hermes/config.yaml and set in the Hermes Gateway environment:
+  RELAY_PROFILE=$target_profile
+  RELAY_APPROVAL_SOCKET=\$HOME/.config/relay/$target_profile.sock
 Then restart the Gateway.
 EOF
-fi
+}
 
-if [ -n "$HARNESS" ]; then
-  case "$HARNESS" in
-    hermes-gateway|openclaw) ;;
-    *) echo "Unknown harness: $HARNESS (use hermes-gateway or openclaw)" >&2; exit 2 ;;
-  esac
-  UNIT="$HOME/.config/systemd/user/relay-$PROFILE.service"
+UNITS=()
+for target in "${TARGETS[@]}"; do
+  IFS='|' read -r target_harness target_profile <<<"$target"
+  export RELAY_PROFILE="$target_profile"
+
+  if [ ! -f "$HOME/.config/relay/$target_profile.json" ]; then
+    "$RELAY_BIN" init
+  fi
+  "$RELAY_BIN" config set-url "$URL"
+  echo "RELAY ID ($target_harness/$target_profile): $("$RELAY_BIN" id)"
+
+  if [ "$target_harness" = "openclaw" ]; then
+    copy_openclaw_plugin "$target_profile"
+  elif [ "$target_harness" = "hermes-gateway" ]; then
+    copy_hermes_plugin "$target_profile"
+  fi
+
+  UNIT="$HOME/.config/systemd/user/relay-$target_profile.service"
   mkdir -p "$(dirname "$UNIT")"
   cat >"$UNIT" <<EOF
 [Unit]
-Description=RELAY bridge ($PROFILE, $HARNESS)
+Description=RELAY bridge ($target_profile, $target_harness)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=$INSTALL_DIR
-Environment=RELAY_PROFILE=$PROFILE
-Environment=RELAY_URL=${URL}
+Environment=RELAY_PROFILE=$target_profile
+Environment=RELAY_URL=$URL
 Environment=RELAY_HEADLESS=1
-ExecStart=$HOME/.local/bin/relay bridge $HARNESS
+ExecStart=$RELAY_BIN bridge $target_harness
 Restart=always
 RestartSec=5
 UMask=0077
@@ -172,9 +217,15 @@ UMask=0077
 [Install]
 WantedBy=default.target
 EOF
+  UNITS+=("relay-$target_profile.service")
+done
+
+if [ "${#UNITS[@]}" -gt 0 ]; then
   systemctl --user daemon-reload
-  systemctl --user enable --now "relay-$PROFILE.service"
-  echo "Bridge service: relay-$PROFILE.service ($(systemctl --user is-active "relay-$PROFILE.service"))"
+  for unit in "${UNITS[@]}"; do
+    systemctl --user enable --now "$unit"
+    echo "Bridge service: $unit ($(systemctl --user is-active "$unit"))"
+  done
 fi
 
 cat <<EOF
