@@ -13,7 +13,7 @@ set -euo pipefail
 #   --dir <path>         install directory (default: ~/.local/share/relay)
 #   --dry-run            print what would be installed, then exit
 #
-# The script never edits your harness config. It prints the exact keys to add.
+# It backs up and enables the Telegram plugin in the detected harness config.
 
 REPO_URL="${RELAY_REPO_URL:-https://github.com/0xCheetah1/relay.git}"
 PROFILE="${RELAY_PROFILE:-}"
@@ -169,13 +169,58 @@ copy_hermes_plugin() {
   local target_profile="$1"
   mkdir -p "$HOME/.hermes/plugins/relay-telegram"
   cp -R "$INSTALL_DIR/adapters/hermes/telegram-plugin/." "$HOME/.hermes/plugins/relay-telegram/"
+  local config="${HERMES_HOME:-$HOME/.hermes}/config.yaml"
+  if [ -f "$config" ] && ! grep -q 'relay-telegram' "$config" 2>/dev/null; then
+    cp "$config" "$config.bak.$(date +%Y%m%d-%H%M%S)"
+    if command -v python3 >/dev/null 2>&1; then
+      python3 - "$config" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = p.read_text()
+if '- relay-telegram' not in s and 'plugins:\n  enabled:\n' in s:
+    p.write_text(s.replace('plugins:\n  enabled:\n', 'plugins:\n  enabled:\n  - relay-telegram\n', 1))
+    print('enabled relay-telegram in Hermes config')
+else:
+    print('enable relay-telegram under plugins.enabled manually')
+PY
+    fi
+  fi
   cat <<EOF
 
-Hermes plugin copied (profile: $target_profile). Enable it in ~/.hermes/config.yaml and set in the Hermes Gateway environment:
+Hermes plugin copied and enabled in ~/.hermes/config.yaml (backup saved). Restart the Hermes Gateway.
+Gateway environment:
   RELAY_PROFILE=$target_profile
   RELAY_APPROVAL_SOCKET=\$HOME/.config/relay/$target_profile.sock
-Then restart the Gateway.
 EOF
+}
+
+enable_openclaw_plugin() {
+  local config="${OPENCLAW_HOME:-$HOME/.openclaw}/openclaw.json"
+  if [ -f "$config" ]; then
+    cp "$config" "$config.bak.$(date +%Y%m%d-%H%M%S)"
+    if command -v python3 >/dev/null 2>&1; then
+      python3 - "$config" <<'PY'
+import json
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+d = json.loads(p.read_text())
+plugins = d.setdefault('plugins', {})
+allow = plugins.setdefault('allow', [])
+if 'relay-telegram' not in allow:
+    allow.append('relay-telegram')
+entries = plugins.setdefault('entries', {})
+entries.setdefault('relay-telegram', {})['enabled'] = True
+channels = d.setdefault('channels', {})
+telegram = channels.setdefault('telegram', {})
+caps = telegram.setdefault('capabilities', {})
+caps['inlineButtons'] = 'all'
+p.write_text(json.dumps(d, indent=2) + '\n')
+print('enabled relay-telegram in OpenClaw config')
+PY
+    fi
+  fi
 }
 
 UNITS=()
@@ -192,6 +237,7 @@ for target in "${TARGETS[@]}"; do
   HERMES_ENV=""
   if [ "$target_harness" = "openclaw" ]; then
     copy_openclaw_plugin "$target_profile"
+    enable_openclaw_plugin
   elif [ "$target_harness" = "hermes-gateway" ]; then
     copy_hermes_plugin "$target_profile"
     mkdir -p "$HOME/.config/relay"

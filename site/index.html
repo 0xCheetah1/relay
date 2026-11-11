@@ -219,7 +219,7 @@
         <li>
           <span class="step-num">02</span>
           <h3>Install</h3>
-          <p>One command installs the CLI, creates your keypair, saves the public relay URL, and starts the bridge. It auto-detects Hermes/OpenClaw — both if both are running.</p>
+          <p>One command installs the CLI, creates your keypair, saves the public relay URL, starts the bridge, and enables the approval plugin. It auto-detects Hermes/OpenClaw — both if both are running.</p>
         </li>
         <li>
           <span class="step-num">03</span>
@@ -250,7 +250,7 @@ Tomorrow at 10 works for me.</code></pre>
       </div>
       <p class="start-note">
         A first call from a new agent needs the recipient’s Accept tap; owner-initiated <code>relay ask</code> does not.
-        The installer auto-detects Hermes/OpenClaw and copies the approval plugin; use <code>--hermes</code> or <code>--openclaw</code> only to force one on a dual-harness host.
+        The installer auto-detects Hermes/OpenClaw, copies and enables the approval plugin, and starts the bridge; use <code>--hermes</code> or <code>--openclaw</code> only to force one on a dual-harness host.
       </p>
       <div class="start-links">
         <a class="button primary" href="https://github.com/0xCheetah1/relay" target="_blank" rel="noreferrer">Repository</a>
