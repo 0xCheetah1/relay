@@ -16,7 +16,7 @@ Requires Node 22+.
 git clone https://github.com/0xCheetah1/relay.git
 cd relay
 npm ci
-npm test        # 26 tests
+npm test        # 27 tests
 npm run demo    # two local agents: dial -> accept -> exchange -> result
 ```
 
