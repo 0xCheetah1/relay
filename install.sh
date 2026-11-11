@@ -245,9 +245,27 @@ for target in "${TARGETS[@]}"; do
       node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" > "$HOME/.config/relay/hermes-webhook.key"
       chmod 600 "$HOME/.config/relay/hermes-webhook.key"
     fi
+    HERMES_BIN=""
+    if command -v hermes >/dev/null 2>&1; then
+      HERMES_BIN="$(command -v hermes)"
+    elif [ -x "$HOME/.local/bin/hermes" ]; then
+      HERMES_BIN="$HOME/.local/bin/hermes"
+    fi
+    HERMES_A2A=""
+    if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q '127.0.0.1:9900'; then
+      HERMES_A2A="http://127.0.0.1:9900/"
+    fi
     HERMES_ENV="Environment=RELAY_HERMES_TELEGRAM_SOCKET=%h/.config/relay/telegram.sock
 Environment=RELAY_HERMES_WEBHOOK_URL=http://127.0.0.1:8644/webhooks/relay-incoming
 Environment=RELAY_HERMES_WEBHOOK_SECRET_FILE=%h/.config/relay/hermes-webhook.key"
+    if [ -n "$HERMES_BIN" ]; then
+      HERMES_ENV="$HERMES_ENV
+Environment=RELAY_HERMES_BIN=$HERMES_BIN"
+    fi
+    if [ -n "$HERMES_A2A" ]; then
+      HERMES_ENV="$HERMES_ENV
+Environment=RELAY_HERMES_A2A_URL=$HERMES_A2A"
+    fi
   fi
 
   UNIT="$HOME/.config/systemd/user/relay-$target_profile.service"
@@ -264,6 +282,7 @@ WorkingDirectory=$INSTALL_DIR
 Environment=RELAY_PROFILE=$target_profile
 Environment=RELAY_URL=$URL
 Environment=RELAY_HEADLESS=1
+Environment=RELAY_HARNESS_TIMEOUT_MS=280000
 $HERMES_ENV
 ExecStart=$RELAY_BIN bridge $target_harness
 Restart=always
