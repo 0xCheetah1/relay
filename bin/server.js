@@ -6,7 +6,7 @@ import { jsonStore } from '../src/store.js';
 const host = process.env.RELAY_HOST ?? '127.0.0.1';
 const port = Number(process.env.RELAY_PORT ?? '8901');
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('RELAY_PORT must be 1-65535');
-const ringMs = Number(process.env.RELAY_RING_MS ?? '30000');
+const ringMs = Number(process.env.RELAY_RING_MS ?? '120000');
 const callMs = Number(process.env.RELAY_CALL_MS ?? '60000');
 const rateCallsPerMin = Number(process.env.RELAY_RATE_CALLS_PER_MIN ?? '10');
 const rateMessagesPerMin = Number(process.env.RELAY_RATE_MESSAGES_PER_MIN ?? '60');

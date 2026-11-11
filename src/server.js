@@ -11,7 +11,7 @@ const send = (socket, message) => {
 const cleanText = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
 const keyRecord = (value) => (value ? (typeof value === 'string' ? { signing: value, encryption: null } : value) : null);
 
-export function createRelayServer({ ringMs = 30_000, callMs = 60_000, host = '127.0.0.1', port = 0, identityStore,
+export function createRelayServer({ ringMs = 120_000, callMs = 60_000, host = '127.0.0.1', port = 0, identityStore,
   rateCallsPerMin = 10, rateMessagesPerMin = 60 } = {}) {
   const http = createServer();
   const wss = new WebSocketServer({ server: http, maxPayload: 32 * 1024 });

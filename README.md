@@ -57,7 +57,7 @@ Requires Node 22+. One command:
 curl -fsSL https://raw.githubusercontent.com/0xCheetah1/relay/main/install.sh | bash
 ```
 
-It clones the repo to `~/.local/share/relay`, installs, links `relay`, creates a local identity, and saves the public relay URL. On a Hermes/OpenClaw host it auto-detects the harness and profile, copies the matching Telegram plugin, enables it in the harness config (with a backup), and installs the bridge unit. If both gateways are running, it installs both bridges with separate profiles. Restart the gateway to load the plugin. Run `relay id` to print your relay ID.
+It clones the repo to `~/.local/share/relay`, installs, links `relay`, creates a local identity, and saves the public relay URL. On a Hermes/OpenClaw host it auto-detects the harness and profile, copies the matching Telegram plugin, enables it in the harness config (with a backup), and installs the bridge unit. If both gateways are running, the installer asks whether RELAY should be installed on Hermes or OpenClaw; use `--harness` for non-interactive installs. Re-running the installer detects a complete per-harness installation and leaves it unchanged instead of reinstalling it. Restart the gateway to load the plugin. Run `relay id` to print your relay ID.
 
 Manual fallback:
 
@@ -109,6 +109,8 @@ The receiver sees the caller ID or saved alias, intent, task and call ID. In an 
 
 Calls from other agents require explicit approval, delivered as an **Accept / Reject inline button** on the existing Hermes Telegram bot. A small `relay-telegram` Hermes plugin (in `adapters/hermes/telegram-plugin/`) registers a pattern-scoped `CallbackQueryHandler` so it does not swallow Hermes's own button flows. It sends the ringing message with buttons and forwards the owner's tap to the bridge's local approval socket, which checks the one-time code and only then accepts. A text-only webhook fallback remains for when the button handler is unavailable.
 
+If the Telegram gateway is unavailable, the bridge still runs headless and the local phonebook UI shows incoming calls with Accept / Reject buttons. The UI uses the same local bridge approval path and one-time code; nothing is auto-accepted.
+
 The deploy template is `deploy/relay-hermes.service.example`. Set `RELAY_PROFILE` and `RELAY_HERMES_BIN` there, and set `RELAY_PROFILE` (or `RELAY_APPROVAL_SOCKET`) in the Hermes gateway environment so the plugin finds the same approval socket.
 
 With its identity and server URL saved, the owner can run:
@@ -125,9 +127,9 @@ The owner-initiated flag is a convenience signal from the interactive CLI, not c
 RELAY_PROFILE=<caller-profile> relay call researcher "Ask for an explanation" "Explain RELAY in one sentence"
 ```
 
-If the recipient rejects, does not answer, fails inference or times out, `relay call` returns a nonzero exit and JSON with the actual status. A recipient on DND returns `status: "unavailable"` with `reason: "recipient_dnd"` and a human `message` — distinct from `reason: "peer_offline"` when the agent is not connected at all. A `relay call` from another agent cannot approve itself; the receiving bridge needs the owner to accept through Telegram.
+If the recipient rejects, does not answer, fails inference or times out, `relay call` returns a nonzero exit and JSON with the actual status. A recipient on DND returns `status: "unavailable"` with `reason: "recipient_dnd"` and a human `message` — distinct from `reason: "peer_offline"` when the agent is not connected at all. A `relay call` from another agent cannot approve itself; the receiving bridge needs the owner to accept through Telegram or the local phonebook UI.
 
-Profiles belong to machines, not callers. Run `relay profiles` on a machine to see its installed identities. Owner-initiated `relay ask` calls from the configured `RELAY_OWNER_IDS` are accepted automatically; every other caller must be approved through the Telegram notification before the ring window closes (120s on the deployed relay).
+Profiles belong to machines, not callers. Run `relay profiles` on a machine to see its installed identities. Owner-initiated `relay ask` calls from the configured `RELAY_OWNER_IDS` are accepted automatically; every other caller must be approved through the Telegram notification or the local phonebook UI before the ring window closes (120s on the deployed relay).
 
 **OpenClaw:** `relay bridge openclaw` runs an `openclaw agent exec` process on an accepted call. For known contacts it uses the agent's **real workspace** with `contextInjection: "always"`, so it answers from its actual context (`AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`) rather than as a blank model. Tools are restricted to `tools.profile: "minimal"` so it cannot run terminal/file commands, and it uses a separate state directory so it never touches the live Gateway session. The deploy template is `deploy/relay-openclaw-testbed.service.example`.
 

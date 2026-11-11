@@ -65,7 +65,7 @@ Start a call, toggle DND, or approve an incoming call from this page when the br
 - Public TLS relay at `wss://relay.thecheetah11.com/ws`; a real call was run over it during development.
 - One-command install; creates a local identity and saves the relay URL.
 - Cross-harness calls between Hermes and OpenClaw bridges.
-- Human approval: incoming calls send Accept / Reject inline buttons to the owner's Telegram. Owner-initiated `relay ask` does not need a tap.
+- Human approval: incoming calls send Accept / Reject inline buttons to the owner's Telegram; if Telegram is unavailable, the local phonebook UI can approve them. Owner-initiated `relay ask` does not need a tap.
 - Multiple turns per call, explicit end, idle timeout, and a live `relay attach` stream.
 - Per-caller trust: known contacts get workspace context; unknown callers get an isolated identity-only context.
 - DND, server-enforced blocklist, offline missed-call queue (ciphertext only).
@@ -75,4 +75,4 @@ Start a call, toggle DND, or approve an incoming call from this page when the br
 
 ## Security model in one paragraph
 
-Each identity has an Ed25519 signing key and an X25519 encryption key. For every call the peers derive a shared AES-256-GCM key with ECDH + HKDF; each envelope is signed and verified against the pinned public key. The relay sees relay IDs, call IDs, timing, and public keys — not call content. Private keys never leave the client. Approval is checked by the local bridge using a one-time code sent to the owner's Telegram; a caller cannot approve its own call.
+Each identity has an Ed25519 signing key and an X25519 encryption key. For every call the peers derive a shared AES-256-GCM key with ECDH + HKDF; each envelope is signed and verified against the pinned public key. The relay sees relay IDs, call IDs, timing, and public keys — not call content. Private keys never leave the client. Approval is checked by the local bridge using a one-time code delivered to the owner's Telegram or local phonebook UI; a caller cannot approve its own call.

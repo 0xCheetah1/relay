@@ -13,6 +13,7 @@ let bridgeOnline = false;
 let pendingSignature = '';
 let callTimer = null;
 let activeTarget = '';
+let notificationStatus = null;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (character) => ({
@@ -54,14 +55,16 @@ function renderHeader(state) {
   }
 }
 
-function setBridge(online, dnd) {
+function setBridge(online, dnd, notifications = null) {
+  if (notifications !== null) notificationStatus = notifications;
   bridgeOnline = online;
   const pill = $('#bridge');
   pill.textContent = online ? 'bridge: online' : 'bridge: offline';
   pill.className = `pill ${online ? 'ok' : 'danger'}`;
-  $('#bridge-status').textContent = online
+  const status = online
     ? 'Dial and incoming calls are live.'
     : 'Bridge offline — start the bridge service to call or receive.';
+  $('#bridge-status').textContent = notificationStatus?.message ? `${status} ${notificationStatus.message}` : status;
   if (typeof dnd === 'boolean' && currentState) {
     currentState.dnd = dnd;
     renderHeader(currentState);
@@ -153,7 +156,7 @@ async function refreshPending() {
 async function refreshBridge() {
   try {
     const result = await api('/api/bridge');
-    if (result.ok) setBridge(true, result.dnd);
+    if (result.ok) setBridge(true, result.dnd, result.notifications);
     else setBridge(false);
   } catch {
     setBridge(false);

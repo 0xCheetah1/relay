@@ -7,7 +7,7 @@ set -euo pipefail
 # Flags (all optional; the installer auto-detects Hermes/OpenClaw and the profile):
 #   --profile <name>     RELAY profile (default: detected from the gateway, or "default")
 #   --url <ws(s)://...>  relay server URL (default: $RELAY_URL or the public relay)
-#   --harness <name>     hermes-gateway | openclaw (default: auto-detected)
+#   --harness <name>     hermes-gateway | openclaw (default: auto-detected; prompts if both are detected)
 #   --openclaw           only install the OpenClaw bridge/plugin
 #   --hermes             only install the Hermes bridge/plugin
 #   --dir <path>         install directory (default: ~/.local/share/relay)
@@ -74,9 +74,27 @@ else
   fi
 
   count=$((HERMES_ON + OPENCLAW_ON))
-  if [ "$count" -gt 1 ] && [ -n "$PROFILE" ]; then
-    echo "Both harnesses are present; omit --profile or use it with --harness." >&2
-    exit 2
+  if [ "$count" -gt 1 ] && [ "$COPY_HERMES" -eq 0 ] && [ "$COPY_OPENCLAW" -eq 0 ]; then
+    if [ -r /dev/tty ]; then
+      echo
+      echo "Both Hermes and OpenClaw gateways were detected. Install RELAY on which one?"
+      echo "  1) Hermes"
+      echo "  2) OpenClaw"
+      echo "  3) Cancel"
+      while :; do
+        printf 'Choose [1-3]: '
+        read -r choice </dev/tty
+        case "$choice" in
+          1) OPENCLAW_ON=0; break ;;
+          2) HERMES_ON=0; break ;;
+          3) echo "Cancelled."; exit 0 ;;
+          *) echo "Please choose 1, 2, or 3." >&2 ;;
+        esac
+      done
+    else
+      echo "Both Hermes and OpenClaw gateways are present. Re-run with --harness hermes-gateway or --harness openclaw." >&2
+      exit 2
+    fi
   fi
 
   if [ "$HERMES_ON" -eq 1 ]; then
@@ -224,8 +242,26 @@ PY
 }
 
 UNITS=()
+target_already_installed() {
+  local target_harness="$1" target_profile="$2"
+  local unit="$HOME/.config/systemd/user/relay-$target_profile.service"
+  [ -f "$HOME/.config/relay/$target_profile.json" ] || return 1
+  [ -f "$unit" ] || return 1
+  grep -q "Environment=RELAY_PROFILE=$target_profile" "$unit" || return 1
+  grep -q "bridge $target_harness" "$unit" || return 1
+  if [ "$target_harness" = "openclaw" ]; then
+    [ -d "${OPENCLAW_HOME:-$HOME/.openclaw}/extensions/relay-telegram" ] || return 1
+  else
+    [ -d "${HERMES_HOME:-$HOME/.hermes}/plugins/relay-telegram" ] || return 1
+  fi
+}
+
 for target in "${TARGETS[@]}"; do
   IFS='|' read -r target_harness target_profile <<<"$target"
+  if target_already_installed "$target_harness" "$target_profile"; then
+    echo "Already installed: $target_harness (profile: $target_profile); leaving the existing installation unchanged."
+    continue
+  fi
   export RELAY_PROFILE="$target_profile"
 
   if [ ! -f "$HOME/.config/relay/$target_profile.json" ]; then

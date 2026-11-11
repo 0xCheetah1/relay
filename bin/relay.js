@@ -639,7 +639,27 @@ if (command === 'profiles') {
       store.save(value);
       return { ok: true, dnd };
     }
-    if (request.action === 'status') return { ok: true, dnd, pending: pending.size };
+    if (request.action === 'status') {
+      const telegramSocket = process.env.RELAY_HERMES_TELEGRAM_SOCKET;
+      const telegramSocketReady = Boolean(telegramSocket && existsSync(telegramSocket));
+      const webhookConfigured = Boolean(process.env.RELAY_HERMES_WEBHOOK_URL);
+      return {
+        ok: true,
+        dnd,
+        pending: pending.size,
+        notifications: harness === 'hermes-gateway'
+          ? {
+            enabled: telegramSocketReady || webhookConfigured,
+            channel: telegramSocketReady ? 'telegram' : (webhookConfigured ? 'webhook' : null),
+            message: telegramSocketReady
+              ? null
+              : webhookConfigured
+                ? 'Telegram socket not found; using the webhook fallback. Use the web UI if a call notification does not arrive.'
+                : 'Telegram gateway not detected; use the web UI to approve calls.',
+          }
+          : null,
+      };
+    }
     if (request.action === 'callStatus') {
       if (typeof request.callId !== 'string') return { ok: false, error: 'invalid_call_id' };
       const record = callRecords.get(request.callId);
@@ -988,8 +1008,8 @@ if (command === 'profiles') {
   if (harness) console.log(`Bridge: accepted calls invoke ${harness} once and return its answer.`);
   if (process.env.RELAY_HEADLESS === '1' && !harness) throw new Error('Headless mode requires a harness bridge');
   if (process.env.RELAY_HEADLESS === '1' && harness === 'hermes-gateway' &&
-      (!process.env.RELAY_HERMES_TELEGRAM_SOCKET || !process.env.RELAY_HERMES_WEBHOOK_URL || !process.env.RELAY_HERMES_WEBHOOK_SECRET_FILE)) {
-    throw new Error('Headless Hermes Gateway bridge requires Telegram button and fallback webhook settings');
+      !((process.env.RELAY_HERMES_TELEGRAM_SOCKET && existsSync(process.env.RELAY_HERMES_TELEGRAM_SOCKET)) || process.env.RELAY_HERMES_WEBHOOK_URL)) {
+    console.warn('Telegram gateway not detected; Telegram notifications are disabled. Use the web UI to approve incoming calls.');
   }
   if (process.env.RELAY_HEADLESS === '1') {
     await new Promise((resolve) => {
