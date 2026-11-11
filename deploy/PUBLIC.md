@@ -66,7 +66,7 @@ Its nginx locations are in [`nginx-apex-relay.conf`](nginx-apex-relay.conf).
 
 ## NEAR lookup and phone link
 
-- `GET /near-lookup/<relay-id>` returns the published NEP-413 attestation and NEAR account.
+- `GET /near-lookup/<relay-id>` returns the relay ID and verified NEAR account (not the full attestation payload).
 - `relay near link` prints `https://<relay-host>/near/?token=…` when the saved relay URL uses `wss://`, or set `RELAY_NEAR_PUBLIC_URL` explicitly.
 - Point the optional `/near/` nginx location at the host running the link command (`:8787`) so the wallet page opens from a phone.
 

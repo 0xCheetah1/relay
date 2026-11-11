@@ -215,7 +215,7 @@ relay near publish                         # republish this profile's attestatio
 relay near lookup <relay-id>               # relay ID -> published NEAR account
 ```
 
-`relay near lookup` resolves a relay ID to the NEAR account published by that identity. The lookup verifies the NEP-413 signature and checks that the signing key belongs to the account on mainnet. The same lookup is available at `https://relay.thecheetah11.com/near-lookup/<relay-id>` and from the lookup form in the site's NEAR section.
+`relay near lookup` resolves a relay ID to the NEAR account published by that identity. The lookup verifies the NEP-413 signature and checks that the signing key belongs to the account on mainnet. The same lookup is available at `https://relay.thecheetah11.com/near-lookup/<relay-id>` and from the lookup form in the site's NEAR section. The HTTP endpoint returns only the relay ID and verified account; the full attestation stays in the relay registry for CLI verification.
 
 Attestations are permanent. Running `relay near link` again replaces the saved attestation and publishes the new one.
 

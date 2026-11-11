@@ -22,7 +22,7 @@ export function createRelayServer({ ringMs = 120_000, callMs = 60_000, host = '1
       if (request.method === 'GET' && match) {
         const attestation = attestations.get(match[1]);
         const body = attestation
-          ? { ok: true, relayId: match[1], account: attestation.account, attestation }
+          ? { ok: true, relayId: match[1], account: attestation.account }
           : { ok: false, error: 'not_found', relayId: match[1] };
         response.writeHead(attestation ? 200 : 404, {
           'Content-Type': 'application/json; charset=utf-8',

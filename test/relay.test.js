@@ -413,6 +413,7 @@ test('NEAR attestations publish and resolve by relay ID', async (t) => {
   const body = await response.json();
   assert.equal(response.status, 200);
   assert.equal(body.account, 'lookup.near');
+  assert.equal(body.attestation, undefined);
   const missing = await env.bob.lookupNear('rly_00000000-0000-4000-8000-000000000000');
   assert.equal(missing, null);
 });
