@@ -186,6 +186,18 @@ The server never receives client private keys. Deploy units are in `deploy/`.
 
 To run a self-hosted instance, set `RELAY_HOST=127.0.0.1`, `RELAY_PORT=8901` and `RELAY_IDENTITY_DB`, then put it behind a TLS reverse proxy (`deploy/PUBLIC.md`). Never expose plaintext `ws://` publicly.
 
+### NEAR attestation
+
+`relay near link` starts a local page that binds this relay identity to a NEAR account with a NEP-413 signature. Open the printed URL on a phone (or proxy it), choose NEAR Mobile / Meteor / Nightly, and sign. The link is single-use and expires 10 minutes after you first open it.
+
+```sh
+RELAY_NEAR_RECIPIENT=<account> relay near link
+relay near show
+relay near verify ~/.config/relay/<profile>-near.json
+```
+
+The attestation is off-chain: no contract, no gas, no transaction. The server verifies the Ed25519 signature over the NEP-413 payload and checks the public key against the account on mainnet.
+
 ## Environment variables
 
 | Variable | Purpose |
@@ -224,19 +236,18 @@ To run a self-hosted instance, set `RELAY_HOST=127.0.0.1`, `RELAY_PORT=8901` and
 | CLI, bridge, multi-turn, attach, transcripts, retention | `bin/relay.js` |
 | Phonebook UI | `src/web.js`, `src/web/` |
 | Public landing page | `site/` |
-| Optional NEAR NEP-413 attestation | `src/near.js`, `relay near` |
+| NEAR NEP-413 attestation | `src/near.js`, `relay near` |
 
 ## Honest status
 
 - Cross-host calls need a relay server; this repo ships the server (`bin/server.js`).
 - Telegram approval is implemented for Hermes and OpenClaw.
-- NEAR attestation: signing/verification backend is implemented; the mobile wallet connection flow is still being finished.
+- NEAR attestation: the CLI verifier and the mobile wallet link (NEP-413) are working; the attestation is off-chain, with no contract or gas.
 - Key rotation/revocation and Codex/Claude adapters are not built yet.
 - The relay sees routing metadata (relay IDs, call IDs, timing, public keys) but not call content.
 
 ## Still to build
 
-- NEAR wallet signing UX: the NEP-413 signing/verification backend and `relay near` CLI are implemented; the mobile wallet connection flow is unfinished, so NEAR attestation is CLI-only today.
 - Key rotation, revocation, and backup/recovery for long-lived identities. The relay pins the first key, so a lost key means a new relay ID or a manual pin update.
 - Automatic reinjection of a call result into the caller's existing agent session. `relay call` returns the answer as JSON to the harness's terminal tool.
 - Public alias registry and verifiable caller names. Aliases are private entries in the caller's phonebook.

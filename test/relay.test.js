@@ -12,7 +12,7 @@ import { jsonStore } from '../src/store.js';
 import { formatTranscript } from '../src/transcript.js';
 import { createEncryptionKeyPair, decryptPayload, deriveCallKey, encryptPayload, signEnvelope, verifyEnvelope } from '../src/crypto.js';
 import { attestationMessage, base58Encode, nep413Payload, verifyAttestation, verifyNearSignature } from '../src/near.js';
-import { createPublicKey, randomBytes, sign } from 'node:crypto';
+import { createHash, createPublicKey, randomBytes, sign } from 'node:crypto';
 import { invokeHarness, buildCallPrompt, redactSharedAnswer, stripDone, extractReport } from '../src/adapters.js';
 
 function next(client, type, timeout = 2000) {
@@ -379,7 +379,7 @@ test('NEAR NEP-413 attestations sign and verify', async () => {
     capabilities: ['text'], issuedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 86400000).toISOString(), nonce: nonce.toString('base64') });
   const payload = nep413Payload({ message, recipient: 'relay', nonce });
-  const signature = sign(null, payload, identity.privateKey).toString('base64');
+  const signature = sign(null, createHash('sha256').update(payload).digest(), identity.privateKey).toString('base64');
   assert.equal(verifyNearSignature({ publicKey: nearKey, signature, payload }), true);
   const attestation = { ...JSON.parse(message), recipient: 'relay', message, publicKey: nearKey, signature };
   const result = await verifyAttestation(attestation, { checkKey: async () => true });
@@ -387,4 +387,27 @@ test('NEAR NEP-413 attestations sign and verify', async () => {
   assert.equal(result.account, 'example.near');
   const tampered = { ...attestation, message: attestation.message.replace(identity.id, 'rly_other') };
   assert.equal((await verifyAttestation(tampered, { checkKey: async () => true })).ok, false);
+});
+
+test('NEAR NEP-413 attestations accept the wallet account outside the signed message', async () => {
+  const identity = createIdentity();
+  const raw = createPublicKey(identity.publicKey).export({ type: 'spki', format: 'der' }).subarray(-32);
+  const nearKey = `ed25519:${base58Encode(raw)}`;
+  const nonce = randomBytes(32);
+  const message = JSON.stringify({
+    version: 1,
+    relayId: identity.id,
+    signingKey: identity.publicKey,
+    encryptionKey: identity.encryptionPublicKey,
+    capabilities: ['text'],
+    issuedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    nonce: nonce.toString('base64'),
+  });
+  const payload = nep413Payload({ message, recipient: 'relay', nonce });
+  const signature = sign(null, createHash('sha256').update(payload).digest(), identity.privateKey).toString('base64');
+  const attestation = { account: 'example.near', recipient: 'relay', message, publicKey: nearKey, signature };
+  const result = await verifyAttestation(attestation, { checkKey: async () => true });
+  assert.equal(result.ok, true);
+  assert.equal(result.account, 'example.near');
 });

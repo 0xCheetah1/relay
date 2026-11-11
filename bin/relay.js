@@ -219,6 +219,8 @@ if (command === 'profiles') {
     const nonce = randomBytes(32);
     const issuedAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
+    const timeoutMs = Number(process.env.RELAY_NEAR_TIMEOUT_MS ?? String(10 * 60 * 1000));
+    let linkExpiresAt = timeoutMs > 0 ? new Date(Date.now() + timeoutMs).toISOString() : null;
     const template = {
       version: 1,
       relayId: value.identity.id,
@@ -227,20 +229,42 @@ if (command === 'profiles') {
       capabilities: ['text', 'multi-turn'],
       issuedAt,
       expiresAt,
+      linkExpiresAt,
       recipient: process.env.RELAY_NEAR_RECIPIENT ?? 'relay.near',
       nonce: nonce.toString('base64'),
     };
     const token = randomBytes(16).toString('hex');
     const port = Number(process.env.RELAY_NEAR_PORT ?? '8787');
+    let used = false;
+    let linkOpened = false;
+    let timeoutTimer = null;
+    let timeoutResolve = null;
     let settle;
     const signed = new Promise((resolveSigned) => { settle = resolveSigned; });
+    const timeout = timeoutMs > 0
+      ? new Promise((resolveTimeout) => { timeoutResolve = resolveTimeout; })
+      : new Promise(() => {});
+    const armTimeout = () => {
+      if (!timeoutMs || !timeoutResolve) return;
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      linkExpiresAt = new Date(Date.now() + timeoutMs).toISOString();
+      timeoutTimer = setTimeout(() => timeoutResolve(null), timeoutMs);
+    };
+    armTimeout();
     const server = createHttpServer(async (req, res) => {
       try {
         const url = new URL(req.url, 'http://localhost');
         console.log(`[near] ${req.method} ${url.pathname}${url.searchParams.get('token') === token ? '' : ' (bad token)'}`);
-        if (url.searchParams.get('token') !== token) { res.writeHead(403); res.end('forbidden'); return; }
-        if (req.method === 'GET' && url.pathname === '/') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(NEAR_PAGE); return; }
-        if (req.method === 'GET' && url.pathname === '/template') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(template)); return; }
+        if (used || url.searchParams.get('token') !== token) { res.writeHead(403); res.end('forbidden'); return; }
+        if (req.method === 'GET' && url.pathname === '/') {
+          if (!linkOpened) { linkOpened = true; armTimeout(); }
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(NEAR_PAGE); return;
+        }
+        if (req.method === 'GET' && url.pathname === '/template') {
+          const linkTtlMs = linkExpiresAt ? Math.max(0, Date.parse(linkExpiresAt) - Date.now()) : null;
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ...template, linkExpiresAt, linkTtlMs })); return;
+        }
         if (req.method === 'POST' && (url.pathname === '/debug' || url.pathname === '/error')) {
           let body = '';
           for await (const chunk of req) { body += chunk; if (body.length > 16384) { res.writeHead(413); res.end(); return; } }
@@ -254,7 +278,8 @@ if (command === 'profiles') {
           try { payload = JSON.parse(body); } catch { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'invalid_json' })); return; }
           let parsed;
           try { parsed = JSON.parse(payload.message); } catch { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'invalid_message' })); return; }
-          if (parsed.account !== payload.account || parsed.relayId !== template.relayId
+          if ((parsed.account && parsed.account !== payload.account) || !payload.account
+            || parsed.relayId !== template.relayId
             || parsed.signingKey !== template.signingKey || parsed.encryptionKey !== template.encryptionKey
             || parsed.nonce !== payload.nonce || payload.recipient !== template.recipient) {
             res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'mismatch' })); return;
@@ -266,10 +291,11 @@ if (command === 'profiles') {
           if (!await accountHasKey(payload.account, payload.publicKey)) {
             res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'key_not_on_account' })); return;
           }
-          const attestation = { ...parsed, recipient: payload.recipient, message: payload.message, publicKey: payload.publicKey, signature: payload.signature };
+          const attestation = { ...parsed, account: payload.account, recipient: payload.recipient, message: payload.message, publicKey: payload.publicKey, signature: payload.signature };
           writeFileSync(nearPath, JSON.stringify(attestation, null, 2), { mode: 0o600 });
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, account: payload.account }));
+          used = true;
           settle(attestation);
           return;
         }
@@ -282,13 +308,15 @@ if (command === 'profiles') {
     const addresses = Object.values(networkInterfaces()).flat().filter((item) => item && item.family === 'IPv4' && !item.internal).map((item) => item.address);
     if (addresses.length === 0) console.log(`Open: http://127.0.0.1:${port}/?token=${token}`);
     for (const address of addresses) console.log(`Open on your phone: http://${address}:${port}/?token=${token}`);
-    const timeoutMs = Number(process.env.RELAY_NEAR_TIMEOUT_MS ?? String(30 * 60 * 1000));
     console.log(`Waiting for the wallet signature (${timeoutMs > 0 ? `${Math.round(timeoutMs / 60000)} min` : 'no timeout'})...`);
-    const timeout = timeoutMs > 0
-      ? new Promise((resolveTimeout) => setTimeout(() => resolveTimeout(null), timeoutMs))
-      : new Promise(() => {});
     const result = await Promise.race([signed, timeout]);
-    await new Promise((resolveClose) => server.close(resolveClose));
+    if (timeoutTimer) clearTimeout(timeoutTimer);
+    await new Promise((resolveClose) => {
+      server.close(() => resolveClose());
+      setTimeout(() => {
+        if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+      }, 1000);
+    });
     if (result) console.log(`Linked NEAR account ${result.account} to ${result.relayId}`);
     else { console.error('Timed out waiting for the signature'); process.exitCode = 1; }
   } else {

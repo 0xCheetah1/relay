@@ -1,4 +1,4 @@
-import { createPublicKey, verify } from 'node:crypto';
+import { createHash, createPublicKey, verify } from 'node:crypto';
 
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
@@ -37,7 +37,7 @@ export function base58Decode(value) {
   return Buffer.from(bytes.reverse());
 }
 
-const NEP413_PREFIX = Buffer.concat([Buffer.from([0x19]), Buffer.from('NEAR Signing Request', 'utf8')]);
+const NEP413_TAG = 2147484061;
 
 function borshString(value) {
   const bytes = Buffer.from(value, 'utf8');
@@ -46,10 +46,16 @@ function borshString(value) {
   return Buffer.concat([length, bytes]);
 }
 
+function borshU32(value) {
+  const bytes = Buffer.alloc(4);
+  bytes.writeUInt32LE(value, 0);
+  return bytes;
+}
+
 export function nep413Payload({ message, recipient, nonce, callbackUrl = null }) {
   const nonceBytes = Buffer.from(nonce);
   if (nonceBytes.length !== 32) throw new Error('NEP-413 nonce must be 32 bytes');
-  const parts = [NEP413_PREFIX, borshString(message), nonceBytes, borshString(recipient)];
+  const parts = [borshU32(NEP413_TAG), borshString(message), nonceBytes, borshString(recipient)];
   if (callbackUrl) parts.push(Buffer.from([1]), borshString(callbackUrl));
   else parts.push(Buffer.from([0]));
   return Buffer.concat(parts);
@@ -65,7 +71,8 @@ export function nearPublicKeyObject(publicKey) {
 
 export function verifyNearSignature({ publicKey, signature, payload }) {
   try {
-    return verify(null, Buffer.from(payload), nearPublicKeyObject(publicKey), Buffer.from(signature, 'base64'));
+    const digest = createHash('sha256').update(Buffer.from(payload)).digest();
+    return verify(null, digest, nearPublicKeyObject(publicKey), Buffer.from(signature, 'base64'));
   } catch {
     return false;
   }
@@ -93,7 +100,7 @@ export async function verifyAttestation(attestation, { checkKey = accountHasKey,
   }
   let parsed;
   try { parsed = JSON.parse(attestation.message); } catch { return { ok: false, error: 'invalid_message' }; }
-  if (parsed.account !== attestation.account) return { ok: false, error: 'account_mismatch' };
+  if (parsed.account && parsed.account !== attestation.account) return { ok: false, error: 'account_mismatch' };
   if (attestation.expiresAt && Date.parse(attestation.expiresAt) < Date.now()) return { ok: false, error: 'expired' };
   const nonce = Buffer.from(parsed.nonce ?? attestation.nonce ?? '', 'base64');
   if (nonce.length !== 32) return { ok: false, error: 'invalid_nonce' };

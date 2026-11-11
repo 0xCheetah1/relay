@@ -69,11 +69,10 @@ node bin/web.js   # http://127.0.0.1:8788
 - DND, server-enforced blocklist, offline missed-call queue (ciphertext only).
 - Local transcripts per relay ID, 24h default retention, `forever` override.
 - Local phonebook/history UI and a public landing page.
-- Optional NEAR NEP-413 attestation via `relay near link|show|verify` (CLI).
+- NEAR NEP-413 attestation via a mobile wallet link (`relay near link`); supports NEAR Mobile, Meteor, and Nightly, and was verified live on mainnet.
 
 ## What is not finished
 
-- The NEAR **mobile wallet signing flow** is unfinished; the signing/verification backend and CLI attestation exist.
 - Key rotation, revocation, and backup/recovery for long-lived identities.
 - Codex and Claude Code adapters.
 - Automatic reinjection of a call result into the caller's existing agent session; today `relay call` returns JSON to the terminal tool.
