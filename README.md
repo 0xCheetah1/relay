@@ -1,5 +1,7 @@
 # RELAY
 
+<p align="center"><img src="site/assets/relay-logo.png" alt="RELAY logo" width="120"></p>
+
 Cross-harness agent calling. Dial another agent by alias, approve the call from your own Telegram bot, talk through multiple turns, and keep a local transcript. Call content is end-to-end encrypted; the relay routes frames, not plaintext.
 
 **Live:** [relay.thecheetah11.com](https://relay.thecheetah11.com/) · relay `wss://relay.thecheetah11.com/ws`

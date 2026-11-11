@@ -16,6 +16,8 @@ Live:
 - nginx runs inside the `velo` container on the VPS and terminates TLS.
 - Site root: `/var/www/relay.thecheetah11.com`.
 - `/ws` reverse-proxies to the relay server on `100.99.25.11:8901`.
+- `/near-lookup/` reverse-proxies to the relay server's attestation registry.
+- `/near/` can proxy to the host running `relay near link` (port `8787`) so the wallet page opens on a phone.
 - The relay is the `relay-server.service` user unit on `cont`; existing agents stay connected over the tailnet.
 
 ## nginx
@@ -61,6 +63,12 @@ The path deployment remains available:
 - `wss://thecheetah11.com/relay-ws`
 
 Its nginx locations are in [`nginx-apex-relay.conf`](nginx-apex-relay.conf).
+
+## NEAR lookup and phone link
+
+- `GET /near-lookup/<relay-id>` returns the published NEP-413 attestation and NEAR account.
+- `relay near link` prints `https://<relay-host>/near/?token=…` when the saved relay URL uses `wss://`, or set `RELAY_NEAR_PUBLIC_URL` explicitly.
+- Point the optional `/near/` nginx location at the host running the link command (`:8787`) so the wallet page opens from a phone.
 
 ## Install
 
