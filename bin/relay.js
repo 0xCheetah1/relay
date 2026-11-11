@@ -292,6 +292,7 @@ if (command === 'profiles') {
     };
     const token = randomBytes(16).toString('hex');
     const port = Number(process.env.RELAY_NEAR_PORT ?? '8787');
+    const nearDebug = process.env.RELAY_NEAR_DEBUG === '1';
     const publicBase = process.env.RELAY_NEAR_PUBLIC_URL
       ?? (() => {
         try {
@@ -317,7 +318,7 @@ if (command === 'profiles') {
     const server = createHttpServer(async (req, res) => {
       try {
         const url = new URL(req.url, 'http://localhost');
-        console.log(`[near] ${req.method} ${url.pathname}${url.searchParams.get('token') === token ? '' : ' (bad token)'}`);
+        if (nearDebug) console.log(`[near] ${req.method} ${url.pathname}${url.searchParams.get('token') === token ? '' : ' (bad token)'}`);
         if (used || url.searchParams.get('token') !== token) { res.writeHead(403); res.end('forbidden'); return; }
         if (req.method === 'GET' && url.pathname === '/') {
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(NEAR_PAGE); return;
@@ -330,7 +331,7 @@ if (command === 'profiles') {
         if (req.method === 'POST' && (url.pathname === '/debug' || url.pathname === '/error')) {
           let body = '';
           for await (const chunk of req) { body += chunk; if (body.length > 16384) { res.writeHead(413); res.end(); return; } }
-          console.log(`[near] ${url.pathname.slice(1)}: ${body.slice(0, 2000)}`);
+          if (nearDebug) console.log(`[near] ${url.pathname.slice(1)}: ${body.slice(0, 2000)}`);
           res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}'); return;
         }
         if (req.method === 'POST' && url.pathname === '/sign') {
@@ -393,11 +394,10 @@ if (command === 'profiles') {
       console.log(`Linked NEAR account ${result.account} to ${result.relayId}`);
       try {
         await publishNearAttestation(result);
-        console.log('Published the NEAR attestation to the relay lookup registry');
       } catch (error) {
-        console.error(`NEAR registry publish failed: ${error.message}`);
+        console.error(`NEAR lookup publish failed: ${error.message}`);
       }
-    } else { console.error('Timed out waiting for the signature'); process.exitCode = 1; }
+    } else { console.error('Failed: timed out waiting for the wallet signature'); process.exitCode = 1; }
   } else {
     throw new Error('Usage: relay near [link | show | verify <attestation.json> | lookup <relay-id> | publish]');
   }

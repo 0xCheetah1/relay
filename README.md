@@ -233,6 +233,7 @@ The attestation is off-chain: no contract, no gas, no transaction. The server ve
 | `RELAY_NEAR_RECIPIENT` | NEP-413 recipient string (default `relay.near`). |
 | `RELAY_NEAR_PUBLIC_URL` | Public base for the link page, e.g. `https://relay.example.com/near/`; otherwise derived from a `wss://` relay URL. |
 | `RELAY_NEAR_DB` | Relay server attestation registry path (default `./relay-near.json`). |
+| `RELAY_NEAR_DEBUG=1` | Show wallet-link HTTP request logs (off by default). |
 | `RELAY_OWNER_IDS` | Comma-separated relay IDs that may auto-connect owner-initiated calls and that always count as trusted. |
 | `RELAY_AGENT_NAME` | Agent name used when answering an unknown caller in limited context. |
 | `RELAY_OWNER_NAME` | Owner name used when answering an unknown caller in limited context. |
