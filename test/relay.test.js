@@ -24,7 +24,8 @@ function next(client, type, timeout = 2000) {
 }
 
 async function setup({ ringMs = 70, callMs = 100 } = {}) {
-  const server = createRelayServer({ ringMs, callMs });
+  const server = createRelayServer({ ringMs, callMs,
+    nearVerify: (attestation) => verifyAttestation(attestation, { checkKey: async () => true }) });
   const url = await server.listen();
   const alice = new RelayClient({ identity: createIdentity(), url });
   const bob = new RelayClient({ identity: createIdentity(), url });
@@ -387,6 +388,33 @@ test('NEAR NEP-413 attestations sign and verify', async () => {
   assert.equal(result.account, 'example.near');
   const tampered = { ...attestation, message: attestation.message.replace(identity.id, 'rly_other') };
   assert.equal((await verifyAttestation(tampered, { checkKey: async () => true })).ok, false);
+});
+
+test('NEAR attestations publish and resolve by relay ID', async (t) => {
+  const env = await setup();
+  t.after(() => env.close());
+  const identity = env.alice.identity;
+  const raw = createPublicKey(identity.publicKey).export({ type: 'spki', format: 'der' }).subarray(-32);
+  const nearKey = `ed25519:${base58Encode(raw)}`;
+  const nonce = randomBytes(32);
+  const message = attestationMessage({ account: 'lookup.near', relayId: identity.id,
+    signingKey: identity.publicKey, encryptionKey: identity.encryptionPublicKey,
+    capabilities: ['text'], issuedAt: new Date().toISOString(), expiresAt: null,
+    nonce: nonce.toString('base64') });
+  const payload = nep413Payload({ message, recipient: 'relay', nonce });
+  const signature = sign(null, createHash('sha256').update(payload).digest(), identity.privateKey).toString('base64');
+  const attestation = { ...JSON.parse(message), recipient: 'relay', message, publicKey: nearKey, signature };
+  env.alice.publishNear(attestation);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const found = await env.bob.lookupNear(identity.id);
+  assert.equal(found.account, 'lookup.near');
+  const httpUrl = env.url.replace(/^ws/, 'http');
+  const response = await fetch(`${httpUrl}/near-lookup/${identity.id}`);
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.account, 'lookup.near');
+  const missing = await env.bob.lookupNear('rly_00000000-0000-4000-8000-000000000000');
+  assert.equal(missing, null);
 });
 
 test('NEAR NEP-413 attestations accept the wallet account outside the signed message', async () => {

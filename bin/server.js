@@ -15,8 +15,9 @@ if (!Number.isInteger(callMs) || callMs < 0) throw new Error('RELAY_CALL_MS must
 if (!Number.isInteger(rateCallsPerMin) || rateCallsPerMin < 1) throw new Error('RELAY_RATE_CALLS_PER_MIN must be an integer >= 1');
 if (!Number.isInteger(rateMessagesPerMin) || rateMessagesPerMin < 1) throw new Error('RELAY_RATE_MESSAGES_PER_MIN must be an integer >= 1');
 const path = resolve(process.env.RELAY_IDENTITY_DB ?? './relay-identities.json');
-const server = createRelayServer({ host, port, identityStore: jsonStore(path), ringMs, callMs, rateCallsPerMin, rateMessagesPerMin });
-console.log(`RELAY listening on ${await server.listen()}; identity pins: ${path}`);
+const nearPath = resolve(process.env.RELAY_NEAR_DB ?? './relay-near.json');
+const server = createRelayServer({ host, port, identityStore: jsonStore(path), nearStore: jsonStore(nearPath), ringMs, callMs, rateCallsPerMin, rateMessagesPerMin });
+console.log(`RELAY listening on ${await server.listen()}; identity pins: ${path}; NEAR registry: ${nearPath}`);
 const shutdown = async () => { await server.close(); process.exit(0); };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

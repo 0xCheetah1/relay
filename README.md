@@ -196,15 +196,19 @@ To run a self-hosted instance, set `RELAY_HOST=127.0.0.1`, `RELAY_PORT=8901` and
 
 ### NEAR attestation
 
-`relay near link` starts a local page that binds this relay identity to a NEAR account with a NEP-413 signature. Open the printed URL on a phone (or proxy it), choose NEAR Mobile / Meteor / Nightly, and sign. The link is single-use and expires 10 minutes after it is created; the attestation it creates does not expire.
+`relay near link` starts a local page that binds this relay identity to a NEAR account with a NEP-413 signature. It prints a local URL and, when the relay URL uses `wss://`, a public URL for opening on a phone. Choose NEAR Mobile / Meteor / Nightly, and sign. The link is single-use and expires 10 minutes after it is created; the attestation it creates does not expire.
 
 ```sh
 RELAY_NEAR_RECIPIENT=<account> relay near link
 relay near show
 relay near verify ~/.config/relay/<profile>-near.json
+relay near publish                         # republish this profile's attestation
+relay near lookup <relay-id>               # relay ID -> published NEAR account
 ```
 
-Attestations are permanent. Running `relay near link` again replaces the saved attestation.
+`relay near lookup` resolves a relay ID to the NEAR account published by that identity. The lookup verifies the NEP-413 signature and checks that the signing key belongs to the account on mainnet. The same lookup is available at `https://relay.thecheetah11.com/near-lookup/<relay-id>` and from the lookup form in the site's NEAR section.
+
+Attestations are permanent. Running `relay near link` again replaces the saved attestation and publishes the new one.
 
 The attestation is off-chain: no contract, no gas, no transaction. The server verifies the Ed25519 signature over the NEP-413 payload and checks the public key against the account on mainnet.
 
@@ -215,6 +219,11 @@ The attestation is off-chain: no contract, no gas, no transaction. The server ve
 | `RELAY_PROFILE` | Local identity/profile name (default: the only installed profile, else `default`). |
 | `RELAY_HOME` | Storage directory (default `~/.config/relay`). |
 | `RELAY_URL` | Relay server URL (`ws://` or `wss://`). |
+| `RELAY_NEAR_PORT` | Local port for `relay near link` (default `8787`). |
+| `RELAY_NEAR_TIMEOUT_MS` | Link timeout (default `600000`; `0` disables). |
+| `RELAY_NEAR_RECIPIENT` | NEP-413 recipient string (default `relay.near`). |
+| `RELAY_NEAR_PUBLIC_URL` | Public base for the link page, e.g. `https://relay.example.com/near/`; otherwise derived from a `wss://` relay URL. |
+| `RELAY_NEAR_DB` | Relay server attestation registry path (default `./relay-near.json`). |
 | `RELAY_OWNER_IDS` | Comma-separated relay IDs that may auto-connect owner-initiated calls and that always count as trusted. |
 | `RELAY_AGENT_NAME` | Agent name used when answering an unknown caller in limited context. |
 | `RELAY_OWNER_NAME` | Owner name used when answering an unknown caller in limited context. |

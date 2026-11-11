@@ -94,7 +94,7 @@ export function attestationMessage({ account, relayId, signingKey, encryptionKey
   return JSON.stringify({ version: 1, account, relayId, signingKey, encryptionKey, capabilities, issuedAt, expiresAt, nonce });
 }
 
-export async function verifyAttestation(attestation, { checkKey = accountHasKey, rpcUrl } = {}) {
+export function verifyAttestationSignature(attestation) {
   if (!attestation?.message || !attestation?.signature || !attestation?.publicKey || !attestation?.account) {
     return { ok: false, error: 'incomplete' };
   }
@@ -107,7 +107,13 @@ export async function verifyAttestation(attestation, { checkKey = accountHasKey,
   if (!verifyNearSignature({ publicKey: attestation.publicKey, signature: attestation.signature, payload })) {
     return { ok: false, error: 'invalid_signature' };
   }
+  return { ok: true, attestation, parsed };
+}
+
+export async function verifyAttestation(attestation, { checkKey = accountHasKey, rpcUrl } = {}) {
+  const verified = verifyAttestationSignature(attestation);
+  if (!verified.ok) return verified;
   const hasKey = await checkKey(attestation.account, attestation.publicKey, rpcUrl);
   if (!hasKey) return { ok: false, error: 'key_not_on_account' };
-  return { ok: true, account: attestation.account, relayId: parsed.relayId };
+  return { ok: true, account: attestation.account, relayId: verified.parsed.relayId };
 }

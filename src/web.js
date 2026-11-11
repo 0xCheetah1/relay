@@ -77,6 +77,7 @@ export function startWeb({ profileDir, profile, port = 8788, host = '127.0.0.1' 
     '/': ['index.html', 'text/html; charset=utf-8'],
     '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
     '/style.css': ['style.css', 'text/css; charset=utf-8'],
+    '/assets/relay-logo.png': ['assets/relay-logo.png', 'image/png'],
   };
 
   const server = createServer(async (request, response) => {

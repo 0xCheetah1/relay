@@ -52,6 +52,40 @@ for (const tab of installTabs) {
   });
 }
 
+const nearLookupForm = document.querySelector('#near-lookup-form');
+if (nearLookupForm) {
+  nearLookupForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const input = document.querySelector('#near-lookup-id');
+    const output = document.querySelector('#near-lookup-result');
+    const relayId = input.value.trim();
+    output.className = 'near-lookup-result';
+    if (!/^rly_[0-9a-f-]{36}$/.test(relayId)) {
+      output.classList.add('error');
+      output.textContent = 'Enter a relay ID like rly_00000000-0000-4000-8000-000000000000.';
+      return;
+    }
+    output.textContent = 'Resolving…';
+    const lookupBase = location.hostname.endsWith('thecheetah11.com')
+      ? 'https://relay.thecheetah11.com/near-lookup/'
+      : '/near-lookup/';
+    try {
+      const response = await fetch(`${lookupBase}${encodeURIComponent(relayId)}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error === 'not_found'
+          ? 'No NEAR account is published for that relay ID yet.'
+          : 'NEAR lookup failed. Try again.');
+      }
+      output.classList.add('ok');
+      output.textContent = `${data.relayId} → ${data.account}`;
+    } catch (error) {
+      output.classList.add('error');
+      output.textContent = error.message;
+    }
+  });
+}
+
 for (const button of document.querySelectorAll('.copy-button[data-copy]')) {
   button.addEventListener('click', async () => {
     const target = document.getElementById(button.dataset.copy);

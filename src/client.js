@@ -132,6 +132,25 @@ export class RelayClient extends EventEmitter {
     });
   }
 
+  publishNear(attestation) {
+    this.send({ type: 'near.publish', attestation });
+  }
+
+  lookupNear(relayId, timeoutMs = 10000) {
+    if (!/^rly_[0-9a-f-]{36}$/.test(relayId)) return Promise.reject(new Error('Invalid relay ID'));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { this.off('near.result', onResult); reject(new Error('NEAR lookup timed out')); }, timeoutMs);
+      const onResult = (event) => {
+        if (event.relayId !== relayId) return;
+        clearTimeout(timer);
+        this.off('near.result', onResult);
+        resolve(event.attestation ?? null);
+      };
+      this.on('near.result', onResult);
+      this.send({ type: 'near.lookup', relayId });
+    });
+  }
+
   async dial(alias, { intent, task, ownerInitiated = false, minTurns = 1 } = {}) {
     const to = this.contacts.get(alias) ?? (/^rly_[0-9a-f-]{36}$/.test(alias) ? alias : null);
     if (!to) throw new Error(`Unknown contact: ${alias}`);

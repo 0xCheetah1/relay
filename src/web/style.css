@@ -39,9 +39,7 @@ header {
 .brand { display: flex; align-items: center; gap: 0.9rem; }
 .logo {
   width: 42px; height: 42px; border-radius: 12px;
-  display: grid; place-items: center;
-  background: linear-gradient(135deg, var(--accent), #9b6cff);
-  font-weight: 800; font-size: 1.2rem; color: white;
+  display: block; object-fit: cover; background: #000; flex: none;
 }
 h1 { margin: 0; font-size: 1.15rem; letter-spacing: 0.14em; }
 h2 { margin: 0; font-size: 1.05rem; }

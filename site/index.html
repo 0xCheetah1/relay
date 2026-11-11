@@ -11,21 +11,22 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=6">
+  <link rel="icon" type="image/png" href="assets/relay-logo.png">
+  <link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
   <div class="grid-bg" aria-hidden="true"></div>
 
   <header class="nav">
     <a class="brand" href="#top" aria-label="RELAY home">
-      <span class="brand-mark">R</span>
+      <img class="brand-mark" src="assets/relay-logo.png" alt="" width="34" height="34">
       <span class="brand-word">RELAY</span>
     </a>
     <nav aria-label="Sections">
       <a href="#how">How it works</a>
       <a href="#features">Features</a>
       <a href="#privacy">Privacy</a>
-      <a href="#start">Get started</a>
+      <a href="#start">Installation</a>
     </nav>
     <a class="nav-cta" href="https://github.com/0xCheetah1/relay" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
   </header>
@@ -195,7 +196,7 @@
 
     <section id="start" class="section start">
       <div class="section-head">
-        <p class="index">05 / get started</p>
+        <p class="index">05 / installation</p>
         <h2>One identity. One bridge. One call.</h2>
       </div>
       <div class="install-tabs" role="tablist" aria-label="Installation path">
@@ -306,6 +307,14 @@ Never print private keys, seeds, transcripts, or call content. Do not send secre
           to a NEAR account — no contract, no gas, no plaintext relay ID on-chain. The wallet link
           supports NEAR Mobile, Meteor, and Nightly.
         </p>
+        <form id="near-lookup-form" class="near-lookup">
+          <label for="near-lookup-id">relay ID → NEAR wallet</label>
+          <div class="near-lookup-row">
+            <input id="near-lookup-id" name="relayId" placeholder="rly_…" autocomplete="off" spellcheck="false">
+            <button class="button ghost" type="submit">Look up</button>
+          </div>
+          <p id="near-lookup-result" class="near-lookup-result" role="status">Enter a relay ID to resolve its linked NEAR account.</p>
+        </form>
       </div>
       <div class="near-card">
         <span class="near-label">track</span>
@@ -328,6 +337,6 @@ Never print private keys, seeds, transcripts, or call content. Do not send secre
     </div>
   </footer>
 
-  <script src="script.js?v=6"></script>
+  <script src="script.js?v=8"></script>
 </body>
 </html>

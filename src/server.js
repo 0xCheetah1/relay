@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { verifyChallenge } from './identity.js';
 import { isEnvelope } from './crypto.js';
+import { verifyAttestation, verifyAttestationSignature } from './near.js';
 
 const ID_PATTERN = /^rly_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const send = (socket, message) => {
@@ -11,9 +12,33 @@ const send = (socket, message) => {
 const cleanText = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
 const keyRecord = (value) => (value ? (typeof value === 'string' ? { signing: value, encryption: null } : value) : null);
 
-export function createRelayServer({ ringMs = 120_000, callMs = 60_000, host = '127.0.0.1', port = 0, identityStore,
-  rateCallsPerMin = 10, rateMessagesPerMin = 60 } = {}) {
-  const http = createServer();
+export function createRelayServer({ ringMs = 120_000, callMs = 60_000, host = '127.0.0.1', port = 0, identityStore, nearStore,
+  nearVerify = verifyAttestation, rateCallsPerMin = 10, rateMessagesPerMin = 60 } = {}) {
+  const attestations = new Map(Object.entries(nearStore?.load() ?? {}));
+  const http = createServer((request, response) => {
+    try {
+      const url = new URL(request.url, 'http://localhost');
+      const match = url.pathname.match(/^\/near-lookup\/(rly_[0-9a-f-]{36})$/);
+      if (request.method === 'GET' && match) {
+        const attestation = attestations.get(match[1]);
+        const body = attestation
+          ? { ok: true, relayId: match[1], account: attestation.account, attestation }
+          : { ok: false, error: 'not_found', relayId: match[1] };
+        response.writeHead(attestation ? 200 : 404, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store',
+        });
+        response.end(JSON.stringify(body));
+        return;
+      }
+      response.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ ok: false, error: 'not_found' }));
+    } catch {
+      response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ ok: false, error: 'lookup_failed' }));
+    }
+  });
   const wss = new WebSocketServer({ server: http, maxPayload: 32 * 1024 });
   const keys = new Map(Object.entries(identityStore?.load() ?? {}));
   const peers = new Map();
@@ -45,7 +70,7 @@ export function createRelayServer({ ringMs = 120_000, callMs = 60_000, host = '1
     return record ? { signing: record.signing, encryption: record.encryption ?? null } : null;
   }
 
-  function handle(peer, message) {
+  async function handle(peer, message) {
     const { id, socket } = peer;
     if (message.type === 'presence.set') {
       if (typeof message.dnd !== 'boolean') return send(socket, { type: 'error', code: 'invalid_presence' });
@@ -59,6 +84,24 @@ export function createRelayServer({ ringMs = 120_000, callMs = 60_000, host = '1
       }
       peer.blocked = new Set(message.blocked);
       return send(socket, { type: 'blocklist.updated', blocked: [...peer.blocked] });
+    }
+    if (message.type === 'near.publish') {
+      if (!allow(peer, 'near_publish', 5)) return send(socket, { type: 'error', code: 'rate_limited' });
+      const signed = verifyAttestationSignature(message.attestation);
+      if (!signed.ok) return send(socket, { type: 'error', code: 'invalid_attestation', reason: signed.error });
+      if (signed.parsed.relayId !== id) return send(socket, { type: 'error', code: 'attestation_relay_mismatch' });
+      const verified = await nearVerify(message.attestation).catch((error) => ({ ok: false, error: error.message }));
+      if (!verified.ok || verified.account !== message.attestation.account || verified.relayId !== id) {
+        return send(socket, { type: 'error', code: 'invalid_attestation', reason: verified.error ?? 'verification_failed' });
+      }
+      attestations.set(id, message.attestation);
+      nearStore?.save(Object.fromEntries(attestations));
+      return send(socket, { type: 'near.published', relayId: id, account: message.attestation.account });
+    }
+    if (message.type === 'near.lookup') {
+      if (!ID_PATTERN.test(message.relayId ?? '')) return send(socket, { type: 'error', code: 'invalid_id' });
+      if (!allow(peer, 'near', 60)) return send(socket, { type: 'error', code: 'rate_limited' });
+      return send(socket, { type: 'near.result', relayId: message.relayId, attestation: attestations.get(message.relayId) ?? null });
     }
     if (message.type === 'keys.get') {
       if (!ID_PATTERN.test(message.id ?? '')) return send(socket, { type: 'error', code: 'invalid_id' });
@@ -173,7 +216,7 @@ export function createRelayServer({ ringMs = 120_000, callMs = 60_000, host = '1
         }
         return;
       }
-      handle(peer, message);
+      handle(peer, message).catch(() => send(socket, { type: 'error', code: 'server_error' }));
     });
     socket.on('close', () => {
       clearTimeout(authTimer);

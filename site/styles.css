@@ -65,11 +65,11 @@ main, header, footer { position: relative; z-index: 1; }
 .brand { display: flex; align-items: center; gap: 0.65rem; }
 .brand-mark {
   width: 34px; height: 34px;
-  display: grid; place-items: center;
-  background: var(--acid); color: var(--acid-ink);
+  display: block;
+  object-fit: cover;
+  background: #000;
   border-radius: 9px;
-  font-weight: 700;
-  font-size: 1rem;
+  flex: none;
 }
 .brand-word { letter-spacing: 0.18em; font-weight: 600; font-size: 0.95rem; }
 
@@ -523,6 +523,43 @@ h1 .accent {
 }
 .near h2 { margin: 0 0 1rem; }
 .near-copy p { color: var(--muted); margin: 0; max-width: 60ch; }
+.near-lookup {
+  margin-top: 1.4rem;
+  max-width: 560px;
+}
+.near-lookup label {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.near-lookup-row { display: flex; gap: 0.6rem; }
+.near-lookup-row input {
+  min-width: 0;
+  flex: 1;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--ink-2);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+.near-lookup-row input:focus { outline: 2px solid var(--acid); outline-offset: 1px; }
+.near-lookup-row .button { flex: none; }
+.near-lookup-result {
+  min-height: 1.4em;
+  margin: 0.6rem 0 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+.near-lookup-result.ok { color: var(--acid); }
+.near-lookup-result.error { color: var(--danger); }
 .near-card {
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -585,6 +622,8 @@ footer p { margin: 0.35rem 0 0; font-size: 0.85rem; }
   .one-liner { flex-direction: column; align-items: stretch; gap: 0.75rem; }
   .copy-button { width: 100%; padding: 0.75rem 1rem; }
   .agent-prompt-card pre { max-height: 300px; }
+  .near-lookup-row { flex-direction: column; align-items: stretch; }
+  .near-lookup-row .button { width: 100%; text-align: center; }
   .terminal pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   .call { flex-direction: column; align-items: stretch; }
   .line { height: 64px; background: none; }

@@ -102,6 +102,9 @@ relay blocked
 relay history                    # recent calls
 relay history show <call-id>
 relay transcripts
+relay near show                  # local NEAR attestation
+relay near lookup <relay-id>     # relay ID -> published NEAR account
+relay near publish               # republish the local attestation
 relay web                        # local phonebook, call, DND, incoming approvals
 ```
 

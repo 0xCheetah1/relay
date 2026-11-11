@@ -74,6 +74,7 @@ Start a call, toggle DND, or approve an incoming call from this page when the br
 - Local transcripts per relay ID, 24h default retention, `forever` override.
 - Local phonebook/history UI and a public landing page.
 - NEAR NEP-413 attestation via a mobile wallet link (`relay near link`); supports NEAR Mobile, Meteor, and Nightly, and was verified live on mainnet; the attestation is permanent and a re-link replaces it.
+- Relay ID → NEAR account lookup: `relay near lookup <relay-id>`, `GET /near-lookup/<relay-id>`, and the resolver in the site's NEAR section. The lookup checks the NEP-413 signature and the account key on mainnet.
 
 ## Security model in one paragraph
 

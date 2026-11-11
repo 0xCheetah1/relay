@@ -64,6 +64,28 @@ function validateUrl(url) {
   }
 }
 
+async function publishNearAttestation(attestation) {
+  const controlPath = join(profileDir, `${profile}.sock`);
+  if (existsSync(controlPath)) {
+    try {
+      const result = await sendControl(controlPath, { action: 'nearPublish', attestation });
+      if (result.ok) return;
+    } catch { /* fall through to a direct connection */ }
+  }
+  const value = state();
+  const url = process.env.RELAY_URL ?? value.url;
+  if (!url) return;
+  validateUrl(url);
+  const client = new RelayClient({ identity: value.identity, url });
+  await client.connect();
+  try {
+    client.publishNear(attestation);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  } finally {
+    await client.close();
+  }
+}
+
 function describeReason(reason) {
   return {
     recipient_dnd: 'recipient is on Do Not Disturb',
@@ -215,6 +237,43 @@ if (command === 'profiles') {
     const result = await verifyAttestation(data);
     console.log(result.ok ? `Valid: ${result.account} -> ${result.relayId}` : `Invalid: ${result.error}`);
     if (!result.ok) process.exitCode = 1;
+  } else if (args[0] === 'lookup' && args[1]) {
+    const relayId = args[1];
+    if (!/^rly_[0-9a-f-]{36}$/.test(relayId)) throw new Error('Usage: relay near lookup <relay-id>');
+    const controlPath = join(profileDir, `${profile}.sock`);
+    let attestation;
+    if (existsSync(controlPath)) {
+      const result = await sendControl(controlPath, { action: 'nearLookup', relayId });
+      if (!result.ok) throw new Error(result.error ?? 'NEAR lookup failed');
+      attestation = result.attestation;
+    } else {
+      const url = process.env.RELAY_URL ?? value.url ?? 'ws://127.0.0.1:8901';
+      validateUrl(url);
+      const client = new RelayClient({ identity: value.identity, url });
+      try {
+        await client.connect();
+        attestation = await client.lookupNear(relayId);
+      } finally {
+        await client.close();
+      }
+    }
+    if (!attestation) {
+      console.log(JSON.stringify({ ok: false, error: 'not_found', relayId }));
+      process.exitCode = 1;
+    } else {
+      const verified = await verifyAttestation(attestation);
+      if (!verified.ok || verified.relayId !== relayId) {
+        console.log(JSON.stringify({ ok: false, error: verified.error ?? 'relay_mismatch', relayId }));
+        process.exitCode = 1;
+      } else {
+        console.log(JSON.stringify({ ok: true, relayId, account: verified.account }));
+      }
+    }
+  } else if (args[0] === 'publish') {
+    if (!existsSync(nearPath)) throw new Error('No NEAR attestation saved. Run: relay near link');
+    const data = JSON.parse(readFileSync(nearPath, 'utf8'));
+    await publishNearAttestation(data);
+    console.log(JSON.stringify({ ok: true, relayId: data.relayId, account: data.account }));
   } else if (args[0] === 'link') {
     const nonce = randomBytes(32);
     const issuedAt = new Date().toISOString();
@@ -233,6 +292,13 @@ if (command === 'profiles') {
     };
     const token = randomBytes(16).toString('hex');
     const port = Number(process.env.RELAY_NEAR_PORT ?? '8787');
+    const publicBase = process.env.RELAY_NEAR_PUBLIC_URL
+      ?? (() => {
+        try {
+          const relay = new URL(process.env.RELAY_URL ?? value.url);
+          return relay.protocol === 'wss:' ? `https://${relay.host}/near/` : null;
+        } catch { return null; }
+      })();
     let used = false;
     let timeoutTimer = null;
     let timeoutResolve = null;
@@ -302,8 +368,17 @@ if (command === 'profiles') {
     });
     await new Promise((resolveListen, rejectListen) => { server.once('error', rejectListen); server.listen(port, '0.0.0.0', resolveListen); });
     const addresses = Object.values(networkInterfaces()).flat().filter((item) => item && item.family === 'IPv4' && !item.internal).map((item) => item.address);
-    if (addresses.length === 0) console.log(`Open: http://127.0.0.1:${port}/?token=${token}`);
-    for (const address of addresses) console.log(`Open on your phone: http://${address}:${port}/?token=${token}`);
+    console.log(`Open locally: http://127.0.0.1:${port}/?token=${token}`);
+    if (publicBase) {
+      try {
+        const publicUrl = new URL(publicBase);
+        publicUrl.searchParams.set('token', token);
+        console.log(`Open on your phone: ${publicUrl.toString()}`);
+      } catch {
+        console.log(`Public NEAR link base is invalid: ${publicBase}`);
+      }
+    }
+    for (const address of addresses) console.log(`Open on your network: http://${address}:${port}/?token=${token}`);
     console.log(`Waiting for the wallet signature (${timeoutMs > 0 ? `${Math.round(timeoutMs / 60000)} min` : 'no timeout'})...`);
     const result = await Promise.race([signed, timeout]);
     if (timeoutTimer) clearTimeout(timeoutTimer);
@@ -313,10 +388,17 @@ if (command === 'profiles') {
         if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
       }, 1000);
     });
-    if (result) console.log(`Linked NEAR account ${result.account} to ${result.relayId}`);
-    else { console.error('Timed out waiting for the signature'); process.exitCode = 1; }
+    if (result) {
+      console.log(`Linked NEAR account ${result.account} to ${result.relayId}`);
+      try {
+        await publishNearAttestation(result);
+        console.log('Published the NEAR attestation to the relay lookup registry');
+      } catch (error) {
+        console.error(`NEAR registry publish failed: ${error.message}`);
+      }
+    } else { console.error('Timed out waiting for the signature'); process.exitCode = 1; }
   } else {
-    throw new Error('Usage: relay near [link | show | verify <attestation.json>]');
+    throw new Error('Usage: relay near [link | show | verify <attestation.json> | lookup <relay-id> | publish]');
   }
 } else if (command === 'history' && args.length === 0) {
   state();
@@ -500,6 +582,10 @@ if (command === 'profiles') {
   for (const [alias, id] of Object.entries(value.contacts ?? {})) client.addContact(alias, id);
   const aliases = new Map([...client.contacts].map(([alias, id]) => [id, alias]));
   await client.connect();
+  const localNearPath = join(profileDir, `${profile}-near.json`);
+  if (existsSync(localNearPath)) {
+    try { client.publishNear(JSON.parse(readFileSync(localNearPath, 'utf8'))); } catch (error) { console.error(`NEAR registry publish failed: ${error.message}`); }
+  }
   if (command === 'call' || command === 'ask') {
     const task = command === 'ask' ? args[1] : args[2];
     const intent = command === 'ask' ? task.slice(0, 160) : args[1];
@@ -659,6 +745,16 @@ if (command === 'profiles') {
           }
           : null,
       };
+    }
+    if (request.action === 'nearPublish') {
+      if (!request.attestation || typeof request.attestation !== 'object') return { ok: false, error: 'invalid_attestation' };
+      client.publishNear(request.attestation);
+      return { ok: true };
+    }
+    if (request.action === 'nearLookup') {
+      if (typeof request.relayId !== 'string') return { ok: false, error: 'invalid_relay_id' };
+      const attestation = await client.lookupNear(request.relayId);
+      return { ok: true, relayId: request.relayId, attestation };
     }
     if (request.action === 'callStatus') {
       if (typeof request.callId !== 'string') return { ok: false, error: 'invalid_call_id' };
@@ -1056,6 +1152,6 @@ if (command === 'profiles') {
   const { url } = await startWeb({ profileDir, profile, port, host });
   console.log(`RELAY phonebook: ${url}`);
 } else {
-  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call [--multi] <alias> <intent> <task> | attach <call-id> | export <call-id> [--out <file>] | transcripts | near link|show|verify <file> | web | retention [list | <alias|id> <30m|12h|7d|forever>] | wait <call-id> | reply <call-id> <text> | end <call-id> [result] | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
+  console.log('relay profiles | init | id | config set-url <url> | dnd on|off | block <alias|id> | unblock <alias|id> | blocked | contacts add <alias> <relay-id> | contacts list | history [show <call-id>] | ask <alias> <question> | call [--multi] <alias> <intent> <task> | attach <call-id> | export <call-id> [--out <file>] | transcripts | near link|show|verify <file>|lookup <relay-id>|publish | web | retention [list | <alias|id> <30m|12h|7d|forever>] | wait <call-id> | reply <call-id> <text> | end <call-id> [result] | accept|reject <call-id> <code> | bridge hermes-gateway|openclaw');
   if (command) process.exitCode = 1;
 }
