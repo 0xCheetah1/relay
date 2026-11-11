@@ -188,7 +188,7 @@ To run a self-hosted instance, set `RELAY_HOST=127.0.0.1`, `RELAY_PORT=8901` and
 
 ### NEAR attestation
 
-`relay near link` starts a local page that binds this relay identity to a NEAR account with a NEP-413 signature. Open the printed URL on a phone (or proxy it), choose NEAR Mobile / Meteor / Nightly, and sign. The link is single-use and expires 10 minutes after you first open it.
+`relay near link` starts a local page that binds this relay identity to a NEAR account with a NEP-413 signature. Open the printed URL on a phone (or proxy it), choose NEAR Mobile / Meteor / Nightly, and sign. The link is single-use and expires 10 minutes after it is created.
 
 ```sh
 RELAY_NEAR_RECIPIENT=<account> relay near link

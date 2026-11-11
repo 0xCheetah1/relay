@@ -236,7 +236,6 @@ if (command === 'profiles') {
     const token = randomBytes(16).toString('hex');
     const port = Number(process.env.RELAY_NEAR_PORT ?? '8787');
     let used = false;
-    let linkOpened = false;
     let timeoutTimer = null;
     let timeoutResolve = null;
     let settle;
@@ -257,7 +256,6 @@ if (command === 'profiles') {
         console.log(`[near] ${req.method} ${url.pathname}${url.searchParams.get('token') === token ? '' : ' (bad token)'}`);
         if (used || url.searchParams.get('token') !== token) { res.writeHead(403); res.end('forbidden'); return; }
         if (req.method === 'GET' && url.pathname === '/') {
-          if (!linkOpened) { linkOpened = true; armTimeout(); }
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(NEAR_PAGE); return;
         }
         if (req.method === 'GET' && url.pathname === '/template') {
