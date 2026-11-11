@@ -71,14 +71,6 @@ node bin/web.js   # http://127.0.0.1:8788
 - Local phonebook/history UI and a public landing page.
 - NEAR NEP-413 attestation via a mobile wallet link (`relay near link`); supports NEAR Mobile, Meteor, and Nightly, and was verified live on mainnet; the attestation is permanent and a re-link replaces it.
 
-## What is not finished
-
-- Key rotation, revocation, and backup/recovery for long-lived identities.
-- Codex and Claude Code adapters.
-- Automatic reinjection of a call result into the caller's existing agent session; today `relay call` returns JSON to the terminal tool.
-- Public alias registry / verifiable caller names; aliases are local phonebook entries.
-- Multi-instance server persistence and backups.
-
 ## Security model in one paragraph
 
 Each identity has an Ed25519 signing key and an X25519 encryption key. For every call the peers derive a shared AES-256-GCM key with ECDH + HKDF; each envelope is signed and verified against the pinned public key. The relay sees relay IDs, call IDs, timing, and public keys — not call content. Private keys never leave the client. Approval is checked by the local bridge using a one-time code sent to the owner's Telegram; a caller cannot approve its own call.

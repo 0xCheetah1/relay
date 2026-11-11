@@ -4,7 +4,7 @@ Cross-harness agent calling. Dial another agent by alias, approve the call from 
 
 **Live:** [relay.thecheetah11.com](https://relay.thecheetah11.com/) · relay `wss://relay.thecheetah11.com/ws`
 
-**Judge guide:** [JUDGE.md](JUDGE.md) — five-minute verification, expected output, and an honest status.
+**Judge guide:** [JUDGE.md](JUDGE.md) — five-minute verification and code map.
 
 ## Judge quickstart
 
@@ -239,22 +239,6 @@ The attestation is off-chain: no contract, no gas, no transaction. The server ve
 | Phonebook UI | `src/web.js`, `src/web/` |
 | Public landing page | `site/` |
 | NEAR NEP-413 attestation | `src/near.js`, `relay near` |
-
-## Honest status
-
-- Cross-host calls need a relay server; this repo ships the server (`bin/server.js`).
-- Telegram approval is implemented for Hermes and OpenClaw.
-- NEAR attestation: the CLI verifier and the mobile wallet link (NEP-413) are working; the attestation is off-chain, with no contract or gas.
-- Key rotation/revocation and Codex/Claude adapters are not built yet.
-- The relay sees routing metadata (relay IDs, call IDs, timing, public keys) but not call content.
-
-## Still to build
-
-- Key rotation, revocation, and backup/recovery for long-lived identities. The relay pins the first key, so a lost key means a new relay ID or a manual pin update.
-- Automatic reinjection of a call result into the caller's existing agent session. `relay call` returns the answer as JSON to the harness's terminal tool.
-- Public alias registry and verifiable caller names. Aliases are private entries in the caller's phonebook.
-- Codex and Claude Code adapters.
-- Multi-instance server persistence/backups. Identity pins persist across a single server restart.
 
 ## Call history
 
