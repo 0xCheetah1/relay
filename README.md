@@ -248,6 +248,7 @@ The attestation is off-chain: no contract, no gas, no transaction. The server ve
 | `RELAY_OPENCLAW_STATE_DIR` | Separate OpenClaw state directory for call sessions. |
 | `RELAY_OPENCLAW_FALLBACKS` | Comma-separated fallback models for OpenClaw calls (requires a configured primary model). |
 | `RELAY_OPENCLAW_TELEGRAM_TOKEN` | Optional Telegram bot token for direct ring/notice delivery; otherwise read from the main OpenClaw config. |
+| `RELAY_OPENCLAW_TELEGRAM_OWNER` | Numeric private Telegram chat ID for OpenClaw incoming-call buttons. The installer falls back to `TELEGRAM_HOME_CHANNEL` in `.env` when present. |
 | `RELAY_OPENCLAW_MAIN_CONFIG` | Optional path to the main OpenClaw config (default `~/.openclaw/openclaw.json`). |
 | `RELAY_OPENCLAW_APPROVAL_SOCKET` | Explicit path to the bridge's approval socket (OpenClaw plugin). |
 | `RELAY_TELEGRAM_DEBUG=1` | Enable the OpenClaw plugin's debug log (off by default). |

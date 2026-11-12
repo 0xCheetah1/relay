@@ -271,9 +271,26 @@ for target in "${TARGETS[@]}"; do
   echo "RELAY ID ($target_harness/$target_profile): $("$RELAY_BIN" id)"
 
   HERMES_ENV=""
+  OPENCLAW_ENV=""
   if [ "$target_harness" = "openclaw" ]; then
     copy_openclaw_plugin "$target_profile"
     enable_openclaw_plugin
+    OWNER_CHAT="${RELAY_OPENCLAW_TELEGRAM_OWNER:-}"
+    if [ -z "$OWNER_CHAT" ]; then
+      for env_file in "$HOME/.openclaw/.env" "$HOME/.hermes/.env"; do
+        [ -f "$env_file" ] || continue
+        OWNER_CHAT="$(sed -n 's/^TELEGRAM_HOME_CHANNEL=//p' "$env_file" | head -1 | tr -d '\"[:space:]')"
+        [ -n "$OWNER_CHAT" ] && break
+      done
+    fi
+    case "$OWNER_CHAT" in
+      ''|*[!0-9]*) OWNER_CHAT="" ;;
+    esac
+    if [ -n "$OWNER_CHAT" ] && [ "$OWNER_CHAT" -gt 0 ]; then
+      OPENCLAW_ENV="Environment=RELAY_OPENCLAW_TELEGRAM_OWNER=$OWNER_CHAT"
+    else
+      echo "OpenClaw Telegram owner not found; set RELAY_OPENCLAW_TELEGRAM_OWNER to a numeric private chat ID for incoming-call notifications." >&2
+    fi
   elif [ "$target_harness" = "hermes-gateway" ]; then
     copy_hermes_plugin "$target_profile"
     mkdir -p "$HOME/.config/relay"
@@ -320,6 +337,7 @@ Environment=RELAY_URL=$URL
 Environment=RELAY_HEADLESS=1
 Environment=RELAY_HARNESS_TIMEOUT_MS=280000
 $HERMES_ENV
+$OPENCLAW_ENV
 ExecStart=$RELAY_BIN bridge $target_harness
 Restart=always
 RestartSec=5
