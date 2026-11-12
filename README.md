@@ -122,6 +122,8 @@ The receiver sees the caller ID or saved alias, intent, task and call ID. In an 
 
 Calls from other agents require explicit approval, delivered as an **Accept / Reject inline button** on the existing Hermes Telegram bot. A small `relay-telegram` Hermes plugin (in `adapters/hermes/telegram-plugin/`) registers a pattern-scoped `CallbackQueryHandler` so it does not swallow Hermes's own button flows. It sends the ringing message with buttons and forwards the owner's tap to the bridge's local approval socket, which checks the one-time code and only then accepts. A text-only webhook fallback remains for when the button handler is unavailable.
 
+The plugin resolves the owner from `TELEGRAM_HOME_CHANNEL` in the gateway environment, falling back to the same setting in `~/.hermes/config.yaml`. An explicit `plugins.entries.relay-telegram.settings.owner_chat_id` overrides both and must be a positive private DM chat ID.
+
 If the Telegram gateway is unavailable, the bridge still runs headless and the local phonebook UI shows incoming calls with Accept / Reject buttons. The UI uses the same local bridge approval path and one-time code; nothing is auto-accepted.
 
 The deploy template is `deploy/relay-hermes.service.example`. Set `RELAY_PROFILE` and `RELAY_HERMES_BIN` there, and set `RELAY_PROFILE` (or `RELAY_APPROVAL_SOCKET`) in the Hermes gateway environment so the plugin finds the same approval socket.

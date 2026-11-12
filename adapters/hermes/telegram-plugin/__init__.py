@@ -26,16 +26,42 @@ def _paths():
     return home / "config.yaml", relay_home / "telegram.sock", Path(approval)
 
 
-_HOME_CHANNEL = re.compile(r"^\s*TELEGRAM_HOME_CHANNEL\s*:\s*(\d+)\s*$", re.MULTILINE)
+_HOME_CHANNEL = re.compile(r"^\s*TELEGRAM_HOME_CHANNEL\s*:\s*[\"']?(\d+)[\"']?\s*$", re.MULTILINE)
+_OWNER_OVERRIDE = None
+
+
+def _valid_chat_id(value):
+    try:
+        chat_id = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return chat_id if chat_id > 0 else None
+
+
+def _owner_from_config():
+    config, _, _ = _paths()
+    try:
+        text = config.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    match = _HOME_CHANNEL.search(text)
+    return _valid_chat_id(match.group(1)) if match else None
 
 
 def _owner_chat_id():
-    config, _, _ = _paths()
-    text = config.read_text(encoding="utf-8")
-    match = _HOME_CHANNEL.search(text)
-    if not match:
-        raise ValueError("RELAY Telegram owner must be a top-level positive DM chat ID")
-    return int(match.group(1))
+    if _OWNER_OVERRIDE is not None:
+        return _OWNER_OVERRIDE
+    env_value = os.environ.get("TELEGRAM_HOME_CHANNEL")
+    if env_value:
+        chat_id = _valid_chat_id(env_value)
+        if chat_id is not None:
+            return chat_id
+    configured = _owner_from_config()
+    if configured is not None:
+        return configured
+    if env_value:
+        raise ValueError("TELEGRAM_HOME_CHANNEL must be a positive private chat ID for RELAY approvals")
+    raise ValueError("RELAY Telegram owner chat not found; set TELEGRAM_HOME_CHANNEL or plugins.entries.relay-telegram.settings.owner_chat_id")
 
 
 async def _send_decision(call_id, code, action):
@@ -64,6 +90,17 @@ async def _send_control(call_id, action):
 
 
 def register(ctx):
+    global _OWNER_OVERRIDE
+    try:
+        configured = ctx.get_config("owner_chat_id", None)
+    except Exception:
+        configured = None
+    if configured is not None:
+        chat_id = _valid_chat_id(configured)
+        if chat_id is None:
+            raise ValueError("plugins.entries.relay-telegram.settings.owner_chat_id must be a positive private chat ID")
+        _OWNER_OVERRIDE = chat_id
+
     def wire(application, adapter):
         global _started
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
