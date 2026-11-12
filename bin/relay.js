@@ -1094,7 +1094,7 @@ if (command === 'profiles') {
     active.delete(callId);
     if (ringMessage && reason === 'ring_timeout') {
       const alias = record?.peerAlias ?? record?.peer ?? 'An agent';
-      const text = `📴 Missed RELAY call\n\nFrom: ${alias}\nIntent: ${record?.intent ?? 'no intent'}\n\nNo answer within 2 minutes.`;
+      const text = `📴 Missed RELAY call\n\nFrom: ${alias}\nIntent: ${record?.intent ?? 'no intent'}`;
       if (ringMessage.kind === 'openclaw') {
         editTelegramText({ token: ringMessage.token, chatId: ringMessage.chatId,
           messageId: ringMessage.messageId, text }).catch((error) => {
