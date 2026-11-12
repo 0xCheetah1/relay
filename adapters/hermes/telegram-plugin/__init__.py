@@ -207,6 +207,21 @@ def register(ctx):
                         raise ValueError("Oversized RELAY call")
                     call = json.loads(raw)
                     owner = _owner_chat_id()
+                    if call.get("action") == "resolve":
+                        call_id = str(call.get("callId", ""))
+                        if not _CALL_ID.fullmatch(call_id):
+                            raise ValueError("Invalid call identity")
+                        pending = _PENDING.pop(call_id, None)
+                        if pending:
+                            text = html.escape(str(call.get("text", ""))[:3500])
+                            try:
+                                await application.bot.edit_message_text(
+                                    chat_id=pending["chat"], message_id=pending["messageId"],
+                                    text=text, parse_mode="HTML", reply_markup=None)
+                            except Exception:
+                                log.exception("RELAY Telegram missed-call edit failed")
+                        writer.write(b'{"status":"resolved"}\n')
+                        return
                     if call.get("action") == "notice":
                         text = html.escape(str(call.get("text", ""))[:3500])
                         buttons = call.get("buttons")
@@ -243,9 +258,11 @@ def register(ctx):
                         InlineKeyboardButton("✅ Accept", callback_data=f"rc:a:{call_id}:{code}"),
                         InlineKeyboardButton("❌ Reject", callback_data=f"rc:r:{call_id}:{code}"),
                     ]])
-                    await send_message(chat_id=owner, text=text, parse_mode="HTML", reply_markup=keyboard)
-                    _PENDING[call_id] = {"alias": alias, "at": time.time()}
-                    writer.write(b'{"status":"delivered"}\n')
+                    message = await send_message(chat_id=owner, text=text, parse_mode="HTML", reply_markup=keyboard)
+                    _PENDING[call_id] = {"alias": alias, "at": time.time(),
+                                         "chat": message.chat_id, "messageId": message.message_id}
+                    writer.write((json.dumps({"status": "delivered", "messageId": message.message_id,
+                                              "chatId": message.chat_id}) + "\n").encode())
                 except Exception:
                     log.exception("RELAY Telegram notification failed")
                     writer.write(b'{"status":"failed"}\n')

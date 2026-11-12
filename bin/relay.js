@@ -13,7 +13,7 @@ import { jsonStore } from '../src/store.js';
 import { formatTranscript } from '../src/transcript.js';
 import { ensureEncryptionKeys } from '../src/crypto.js';
 import { accountHasKey, attestationMessage, nep413Payload, verifyAttestation, verifyNearSignature } from '../src/near.js';
-import { approvalCode, sameCode, sendControl, sendDecision, sendDial, sendInlineNotice, sendInlineRing, sendOpenClawNotice, sendOpenClawRing, sendTelegramRing, startApprovalSocket, startAttachServer } from '../src/notifications.js';
+import { approvalCode, editTelegramText, sameCode, sendControl, sendDecision, sendDial, sendInlineNotice, sendInlineResolve, sendInlineRing, sendOpenClawNotice, sendOpenClawRing, sendTelegramRing, startApprovalSocket, startAttachServer } from '../src/notifications.js';
 
 const profileDir = process.env.RELAY_HOME ?? join(homedir(), '.config', 'relay');
 const profile = process.env.RELAY_PROFILE ?? (profiles().length === 1 ? profiles()[0] : 'default');
@@ -630,6 +630,7 @@ if (command === 'profiles') {
   console.log(`Connected as ${profile} (${value.identity.id}). Type /help for commands.`);
   const pending = new Map();
   const notificationCodes = new Map();
+  const ringMessages = new Map();
   const approved = new Map();
   const active = new Map();
   const callRecords = new Map();
@@ -928,7 +929,10 @@ if (command === 'profiles') {
       (async () => {
         try {
           if (!process.env.RELAY_HERMES_TELEGRAM_SOCKET) throw new Error('No Telegram button handler configured');
-          await sendInlineRing(process.env.RELAY_HERMES_TELEGRAM_SOCKET, ring);
+          const result = await sendInlineRing(process.env.RELAY_HERMES_TELEGRAM_SOCKET, ring);
+          if (result?.messageId) ringMessages.set(callId, {
+            kind: 'hermes', chatId: result.chatId, messageId: result.messageId,
+          });
         } catch (buttonError) {
           try {
             await sendTelegramRing({ url: process.env.RELAY_HERMES_WEBHOOK_URL,
@@ -944,7 +948,16 @@ if (command === 'profiles') {
       notificationCodes.set(callId, { code, attempts: 0 });
       sendOpenClawRing({ bin: process.env.RELAY_OPENCLAW_BIN,
         ownerId: process.env.RELAY_OPENCLAW_TELEGRAM_OWNER,
-        call: event, alias: aliases.get(from) ?? from, code, trusted, token: openclawToken }).catch((error) => {
+        call: event, alias: aliases.get(from) ?? from, code, trusted, token: openclawToken }).then((result) => {
+        if (openclawToken && result?.message_id) {
+          ringMessages.set(callId, {
+            kind: 'openclaw',
+            chatId: result.chat?.id ?? process.env.RELAY_OPENCLAW_TELEGRAM_OWNER,
+            messageId: result.message_id,
+            token: openclawToken,
+          });
+        }
+      }).catch((error) => {
         console.error(`Call ${callId} could not notify Telegram: ${error.message}`);
       });
     }
@@ -1067,6 +1080,8 @@ if (command === 'profiles') {
   });
   client.on('call.ended', ({ callId, status, reason, result }) => {
     const record = callRecords.get(callId);
+    const ringMessage = ringMessages.get(callId);
+    ringMessages.delete(callId);
     const wasActive = acceptedCalls.has(callId);
     acceptedCalls.delete(callId);
     const session = callSessions.get(callId);
@@ -1077,6 +1092,20 @@ if (command === 'profiles') {
     approved.delete(callId);
     active.get(callId)?.abort();
     active.delete(callId);
+    if (ringMessage && reason === 'ring_timeout') {
+      const alias = record?.peerAlias ?? record?.peer ?? 'An agent';
+      const text = `📴 Missed RELAY call\n\nFrom: ${alias}\nIntent: ${record?.intent ?? 'no intent'}\n\nNo answer within 2 minutes.`;
+      if (ringMessage.kind === 'openclaw') {
+        editTelegramText({ token: ringMessage.token, chatId: ringMessage.chatId,
+          messageId: ringMessage.messageId, text }).catch((error) => {
+          console.error(`Could not mark call ${callId} as missed: ${error.message}`);
+        });
+      } else if (ringMessage.kind === 'hermes' && process.env.RELAY_HERMES_TELEGRAM_SOCKET) {
+        sendInlineResolve(process.env.RELAY_HERMES_TELEGRAM_SOCKET, { callId, text }).catch((error) => {
+          console.error(`Could not mark call ${callId} as missed: ${error.message}`);
+        });
+      }
+    }
     if (record) rememberReport(callId, { peer: record.peerAlias ?? record.peer, direction: record.direction,
       intent: record.intent, task: record.task, result, report: record.report, status, reason });
     broadcastAttach(callId, { type: 'ended', status, reason, result });

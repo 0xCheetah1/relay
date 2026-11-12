@@ -63,6 +63,19 @@ export async function sendTelegramDirect({ token, chatId, text, inlineKeyboard, 
   return data.result;
 }
 
+export async function editTelegramText({ token, chatId, messageId, text }) {
+  if (!token) throw new Error('Missing Telegram bot token');
+  const response = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId, text, reply_markup: { inline_keyboard: [] } }),
+    signal: AbortSignal.timeout(10000),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) throw new Error(`Telegram editMessageText failed: ${data.description ?? response.status}`);
+  return data.result;
+}
+
 export function sendOpenClawRing({ bin, ownerId, call, alias, code, trusted = true, token }) {
   const text = `📞 Incoming RELAY call\n\nFrom: ${alias}${trusted ? '' : '\n⚠️ Unknown caller — not in your phonebook'}\nIntent: ${call.intent}\n\n📋 Task\n${call.task}\n\n${trusted ? 'Answers use full context.' : 'Accepting answers with minimal context only.'}\n⏳ Answer within 2 minutes.`;
   if (token) {
@@ -123,6 +136,11 @@ export async function sendInlineRing(path, { call, alias, code, trusted = true }
   const result = await socketRequest(path, { callId: call.callId, from: call.from,
     alias, intent: call.intent, task: call.task, code, trusted });
   if (result.status !== 'delivered') throw new Error('Hermes Telegram button delivery failed');
+  return result;
+}
+
+export async function sendInlineResolve(path, { callId, text }) {
+  return socketRequest(path, { action: 'resolve', callId, text });
 }
 
 export async function sendInlineNotice(path, text, { silent = false, buttons = null } = {}) {
